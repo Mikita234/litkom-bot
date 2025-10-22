@@ -33,29 +33,7 @@ async def main():
         dp.include_router(leader.router)
         dp.include_router(common.router)
         
-        # Обработчик неизвестных команд (должен быть последним)
-        @dp.message()
-        async def unknown_command(message: Message):
-            """Обработчик неизвестных команд"""
-            # Проверяем, что это не команда (не начинается с /)
-            if not message.text or not message.text.startswith('/'):
-                return
-            
-            user_id = message.from_user.id
-            role = await db.get_user_role(user_id)
-            
-            if role is None:
-                await message.answer(
-                    "❓ Неизвестная команда.\n\n"
-                    "Для начала работы введите /set_admin"
-                )
-            elif role in ["admin", "leader"]:
-                await message.answer(
-                    "❓ Неизвестная команда.\n\n"
-                    "Используйте /help для просмотра доступных команд."
-                )
-            else:
-                await message.answer("❌ У вас нет доступа к боту.")
+        # Обработчики команд находятся в handlers/
         
         logger.info("Бот запущен")
         
