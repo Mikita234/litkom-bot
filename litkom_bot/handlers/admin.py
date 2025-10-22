@@ -18,6 +18,7 @@ class AdminStates(StatesGroup):
     waiting_for_item_name = State()
     waiting_for_item_category = State()
     waiting_for_item_price = State()
+    waiting_for_item_cost = State()
     waiting_for_item_min_stock = State()
     waiting_for_stock_name = State()
     waiting_for_stock_count = State()
@@ -138,10 +139,25 @@ async def process_item_price(message: Message, state: FSMContext):
             return
         
         await state.update_data(item_price=price)
+        await message.answer("💰 Введите себестоимость:")
+        await state.set_state(AdminStates.waiting_for_item_cost)
+    except ValueError:
+        await message.answer("❌ Введите корректную цену (число).")
+
+@router.message(AdminStates.waiting_for_item_cost)
+async def process_item_cost(message: Message, state: FSMContext):
+    """Обработка себестоимости позиции"""
+    try:
+        cost = float(message.text)
+        if cost < 0:
+            await message.answer("❌ Себестоимость не может быть отрицательной.")
+            return
+        
+        await state.update_data(item_cost=cost)
         await message.answer("📊 Введите минимальный остаток:")
         await state.set_state(AdminStates.waiting_for_item_min_stock)
     except ValueError:
-        await message.answer("❌ Введите корректную цену (число).")
+        await message.answer("❌ Введите корректную себестоимость (число).")
 
 @router.message(AdminStates.waiting_for_item_min_stock)
 async def process_item_min_stock(message: Message, state: FSMContext):
@@ -157,16 +173,20 @@ async def process_item_min_stock(message: Message, state: FSMContext):
             data['item_name'],
             data['item_category'],
             data['item_price'],
+            data['item_cost'],
             min_stock
         )
         
         if success:
+            profit_margin = ((data['item_price'] - data['item_cost']) / data['item_price']) * 100
             await message.answer(
                 f"✅ Позиция добавлена:\n"
                 f"📚 {data['item_name']}\n"
                 f"📂 {data['item_category']}\n"
-                f"💰 {data['item_price']:.0f} руб.\n"
-                f"📊 Мин. остаток: {min_stock} шт."
+                f"💰 Цена: {data['item_price']:.0f} руб.\n"
+                f"💸 Себестоимость: {data['item_cost']:.0f} руб.\n"
+                f"📊 Мин. остаток: {min_stock} шт.\n"
+                f"💎 Маржа: {profit_margin:.1f}%"
             )
         else:
             await message.answer("❌ Ошибка при добавлении позиции.")
@@ -293,6 +313,8 @@ async def cmd_inventory(message: Message):
     text = "📋 Полная инвентаризация:\n\n"
     total_items = 0
     low_stock_count = 0
+    total_revenue = 0
+    total_cost = 0
     
     for item in report_data:
         name = item['name']
@@ -300,18 +322,81 @@ async def cmd_inventory(message: Message):
         min_stock = item['min_stock']
         sold = item['sold']
         price = item['price']
+        cost = item.get('cost', 0)
         
         total_items += stock
         if stock <= min_stock:
             low_stock_count += 1
         
+        revenue = sold * price
+        item_cost = sold * cost
+        profit = revenue - item_cost
+        
+        total_revenue += revenue
+        total_cost += item_cost
+        
         warning = " ⚠️" if stock <= min_stock else ""
         text += f"📚 {name}\n"
         text += f"   Остаток: {stock} шт. (мин: {min_stock}){warning}\n"
-        text += f"   Проданно: {sold} шт. на {sold * price:.0f} руб.\n\n"
+        text += f"   Проданно: {sold} шт. на {revenue:.0f} руб.\n"
+        text += f"   Прибыль: {profit:.0f} руб.\n\n"
     
-    text += f"📊 Итого позиций: {len(report_data)}\n"
-    text += f"📦 Общий остаток: {total_items} шт.\n"
-    text += f"⚠️ Низкие остатки: {low_stock_count} позиций"
+    total_profit = total_revenue - total_cost
+    profit_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
     
+    text += f"📊 ИТОГО:\n"
+    text += f"   Позиций: {len(report_data)}\n"
+    text += f"   Остаток: {total_items} шт.\n"
+    text += f"   Низкие остатки: {low_stock_count}\n"
+    text += f"   Выручка: {total_revenue:.0f} руб.\n"
+    text += f"   Затраты: {total_cost:.0f} руб.\n"
+    text += f"   Прибыль: {total_profit:.0f} руб. ({profit_margin:.1f}%)"
+    
+    await message.answer(text)
+
+@router.message(Command("analytics"))
+async def cmd_analytics(message: Message):
+    """Обработчик команды /analytics - аналитика спроса"""
+    if not await db.is_admin(message.from_user.id):
+        await message.answer("❌ Только администратор может просматривать аналитику.")
+        return
+    
+    import datetime
+    current_date = datetime.date.today()
+    current_year = current_date.year
+    current_month = current_date.month
+    
+    # Предыдущий месяц
+    if current_month == 1:
+        prev_year = current_year - 1
+        prev_month = 12
+    else:
+        prev_year = current_year
+        prev_month = current_month - 1
+    
+    analytics_data = await db.get_demand_analytics(
+        current_year, current_month, prev_year, prev_month
+    )
+    
+    if not analytics_data:
+        await message.answer("❌ Недостаточно данных для аналитики. Нужны данные за минимум 2 месяца.")
+        return
+    
+    current_period = f"{current_month}.{current_year}"
+    previous_period = f"{prev_month}.{prev_year}"
+    
+    from utils import format_demand_analytics
+    text = format_demand_analytics(analytics_data, current_period, previous_period)
+    await message.answer(text)
+
+@router.message(Command("profit"))
+async def cmd_profit(message: Message):
+    """Обработчик команды /profit - отчет по прибыли"""
+    if not await db.is_admin(message.from_user.id):
+        await message.answer("❌ Только администратор может просматривать отчет по прибыли.")
+        return
+    
+    profit_data = await db.get_profit_report()
+    from utils import format_profit_report
+    text = format_profit_report(profit_data)
     await message.answer(text)

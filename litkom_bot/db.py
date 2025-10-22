@@ -32,7 +32,23 @@ class Database:
                         stock INTEGER NOT NULL DEFAULT 0,
                         min_stock INTEGER NOT NULL DEFAULT 0,
                         price REAL NOT NULL DEFAULT 0.0,
+                        cost REAL NOT NULL DEFAULT 0.0,
                         sold INTEGER NOT NULL DEFAULT 0
+                    )
+                ''')
+                
+                # Создание таблицы для ежемесячных продаж (аналитика)
+                await db.execute('''
+                    CREATE TABLE IF NOT EXISTS monthly_sales (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        item_id INTEGER NOT NULL,
+                        year INTEGER NOT NULL,
+                        month INTEGER NOT NULL,
+                        sold_quantity INTEGER NOT NULL DEFAULT 0,
+                        total_revenue REAL NOT NULL DEFAULT 0.0,
+                        total_cost REAL NOT NULL DEFAULT 0.0,
+                        FOREIGN KEY (item_id) REFERENCES literature(id),
+                        UNIQUE(item_id, year, month)
                     )
                 ''')
                 
@@ -79,16 +95,16 @@ class Database:
         role = await self.get_user_role(tg_id)
         return role in ['admin', 'leader']
     
-    async def add_item(self, name: str, category: str, price: float, min_stock: int) -> bool:
+    async def add_item(self, name: str, category: str, price: float, cost: float, min_stock: int) -> bool:
         """Добавление новой позиции литературы"""
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute(
-                    'INSERT OR REPLACE INTO literature (name, category, stock, min_stock, price) VALUES (?, ?, 0, ?, ?)',
-                    (name, category, min_stock, price)
+                    'INSERT OR REPLACE INTO literature (name, category, stock, min_stock, price, cost) VALUES (?, ?, 0, ?, ?, ?)',
+                    (name, category, min_stock, price, cost)
                 )
                 await db.commit()
-                logger.info(f"Добавлена позиция: {name}")
+                logger.info(f"Добавлена позиция: {name} (цена: {price}, себестоимость: {cost})")
                 return True
         except Exception as e:
             logger.error(f"Ошибка добавления позиции: {e}")
@@ -216,16 +232,119 @@ class Database:
             return []
     
     async def reset_sales(self) -> bool:
-        """Обнуление продаж"""
+        """Обнуление продаж с сохранением в аналитику"""
         try:
+            import datetime
+            current_date = datetime.date.today()
+            year = current_date.year
+            month = current_date.month
+            
             async with aiosqlite.connect(self.db_path) as db:
+                # Получаем текущие продажи для сохранения в аналитику
+                cursor = await db.execute(
+                    'SELECT id, sold, price, cost FROM literature WHERE sold > 0'
+                )
+                items = await cursor.fetchall()
+                
+                for item_id, sold_qty, price, cost in items:
+                    total_revenue = sold_qty * price
+                    total_cost = sold_qty * cost
+                    
+                    # Сохраняем в monthly_sales
+                    await db.execute(
+                        '''INSERT OR REPLACE INTO monthly_sales 
+                           (item_id, year, month, sold_quantity, total_revenue, total_cost) 
+                           VALUES (?, ?, ?, ?, ?, ?)''',
+                        (item_id, year, month, sold_qty, total_revenue, total_cost)
+                    )
+                
+                # Обнуляем продажи
                 await db.execute('UPDATE literature SET sold = 0')
                 await db.commit()
-                logger.info("Продажи обнулены")
+                logger.info(f"Продажи обнулены и сохранены в аналитику за {month}.{year}")
                 return True
         except Exception as e:
             logger.error(f"Ошибка обнуления продаж: {e}")
             return False
+    
+    async def get_demand_analytics(self, current_year: int, current_month: int, 
+                                 prev_year: int, prev_month: int) -> List[Dict]:
+        """Получение аналитики спроса за два периода"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                query = '''
+                    SELECT 
+                        l.name,
+                        COALESCE(curr.sold_quantity, 0) as current_sold,
+                        COALESCE(prev.sold_quantity, 0) as previous_sold,
+                        COALESCE(curr.total_revenue, 0) as current_revenue,
+                        COALESCE(prev.total_revenue, 0) as previous_revenue,
+                        COALESCE(curr.total_cost, 0) as current_cost,
+                        COALESCE(prev.total_cost, 0) as previous_cost
+                    FROM literature l
+                    LEFT JOIN monthly_sales curr ON l.id = curr.item_id 
+                        AND curr.year = ? AND curr.month = ?
+                    LEFT JOIN monthly_sales prev ON l.id = prev.item_id 
+                        AND prev.year = ? AND prev.month = ?
+                    WHERE COALESCE(curr.sold_quantity, 0) > 0 OR COALESCE(prev.sold_quantity, 0) > 0
+                    ORDER BY l.name
+                '''
+                cursor = await db.execute(query, (current_year, current_month, prev_year, prev_month))
+                rows = await cursor.fetchall()
+                
+                analytics = []
+                for row in rows:
+                    current_sold, previous_sold = row[1], row[2]
+                    current_revenue, previous_revenue = row[3], row[4]
+                    current_cost, previous_cost = row[5], row[6]
+                    
+                    # Вычисляем прирост/отток
+                    demand_change = current_sold - previous_sold
+                    revenue_change = current_revenue - previous_revenue
+                    profit_change = (current_revenue - current_cost) - (previous_revenue - previous_cost)
+                    
+                    analytics.append({
+                        'name': row[0],
+                        'current_sold': current_sold,
+                        'previous_sold': previous_sold,
+                        'demand_change': demand_change,
+                        'current_revenue': current_revenue,
+                        'previous_revenue': previous_revenue,
+                        'revenue_change': revenue_change,
+                        'current_profit': current_revenue - current_cost,
+                        'previous_profit': previous_revenue - previous_cost,
+                        'profit_change': profit_change
+                    })
+                
+                return analytics
+        except Exception as e:
+            logger.error(f"Ошибка получения аналитики спроса: {e}")
+            return []
+    
+    async def get_profit_report(self) -> Dict:
+        """Получение отчета по прибыли"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute(
+                    '''SELECT 
+                        SUM(sold * price) as total_revenue,
+                        SUM(sold * cost) as total_cost,
+                        SUM(sold * (price - cost)) as total_profit
+                       FROM literature'''
+                )
+                row = await cursor.fetchone()
+                
+                if row:
+                    return {
+                        'total_revenue': row[0] or 0,
+                        'total_cost': row[1] or 0,
+                        'total_profit': row[2] or 0,
+                        'profit_margin': ((row[2] or 0) / (row[0] or 1)) * 100 if row[0] else 0
+                    }
+                return {'total_revenue': 0, 'total_cost': 0, 'total_profit': 0, 'profit_margin': 0}
+        except Exception as e:
+            logger.error(f"Ошибка получения отчета по прибыли: {e}")
+            return {'total_revenue': 0, 'total_cost': 0, 'total_profit': 0, 'profit_margin': 0}
 
 # Глобальный экземпляр базы данных
 db = Database()

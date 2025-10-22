@@ -101,6 +101,72 @@ def create_quantity_keyboard() -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
+def format_demand_analytics(analytics_data: List[Dict], current_period: str, previous_period: str) -> str:
+    """Форматирование отчета по аналитике спроса"""
+    if not analytics_data:
+        return "📊 Аналитика спроса:\nНет данных для сравнения"
+    
+    text = f"📊 Аналитика спроса ({current_period} vs {previous_period}):\n\n"
+    
+    total_current = 0
+    total_previous = 0
+    total_revenue_current = 0
+    total_revenue_previous = 0
+    
+    for item in analytics_data:
+        name = item['name']
+        current_sold = item['current_sold']
+        previous_sold = item['previous_sold']
+        demand_change = item['demand_change']
+        current_revenue = item['current_revenue']
+        previous_revenue = item['previous_revenue']
+        revenue_change = item['revenue_change']
+        
+        total_current += current_sold
+        total_previous += previous_sold
+        total_revenue_current += current_revenue
+        total_revenue_previous += previous_revenue
+        
+        # Определяем тренд
+        if demand_change > 0:
+            trend = f"📈 +{demand_change}"
+        elif demand_change < 0:
+            trend = f"📉 {demand_change}"
+        else:
+            trend = "➡️ 0"
+        
+        text += f"📚 {name}:\n"
+        text += f"   {current_period}: {current_sold} шт. ({current_revenue:.0f} руб.)\n"
+        text += f"   {previous_period}: {previous_sold} шт. ({previous_revenue:.0f} руб.)\n"
+        text += f"   Изменение: {trend}\n\n"
+    
+    # Общая статистика
+    total_change = total_current - total_previous
+    total_revenue_change = total_revenue_current - total_revenue_previous
+    
+    if total_change > 0:
+        total_trend = f"📈 +{total_change}"
+    elif total_change < 0:
+        total_trend = f"📉 {total_change}"
+    else:
+        total_trend = "➡️ 0"
+    
+    text += f"📊 ИТОГО:\n"
+    text += f"   Продажи: {total_current} → {total_previous} ({total_trend})\n"
+    text += f"   Выручка: {total_revenue_current:.0f} → {total_revenue_previous:.0f} руб. ({total_revenue_change:+.0f})\n"
+    
+    return text
+
+def format_profit_report(profit_data: Dict) -> str:
+    """Форматирование отчета по прибыли"""
+    text = "💰 Отчет по прибыли:\n\n"
+    text += f"📈 Общая выручка: {profit_data['total_revenue']:.0f} руб.\n"
+    text += f"💸 Общие затраты: {profit_data['total_cost']:.0f} руб.\n"
+    text += f"💎 Чистая прибыль: {profit_data['total_profit']:.0f} руб.\n"
+    text += f"📊 Маржа прибыли: {profit_data['profit_margin']:.1f}%\n"
+    
+    return text
+
 async def keep_alive():
     """Функция для поддержания работы бота на Render.com"""
     while True:
