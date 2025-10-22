@@ -11,6 +11,14 @@ from utils import format_stock_report, format_low_stock
 logger = logging.getLogger(__name__)
 router = Router()
 
+# Универсальная функция для очистки состояния при командах
+async def clear_state_on_command(message: Message, state: FSMContext):
+    """Очищает состояние FSM если пользователь отправил команду"""
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return True
+    return False
+
 # Состояния для FSM
 class AdminStates(StatesGroup):
     waiting_for_admin_confirmation = State()
@@ -83,6 +91,9 @@ async def cmd_add_leader(message: Message, state: FSMContext):
 @router.message(AdminStates.waiting_for_leader_id)
 async def process_leader_id(message: Message, state: FSMContext):
     """Обработка ID ведущего"""
+    if await clear_state_on_command(message, state):
+        return
+    
     try:
         if message.forward_from:
             # Если пересланное сообщение
@@ -119,6 +130,9 @@ async def cmd_add_item(message: Message, state: FSMContext):
 @router.message(AdminStates.waiting_for_item_name)
 async def process_item_name(message: Message, state: FSMContext):
     """Обработка названия позиции"""
+    if await clear_state_on_command(message, state):
+        return
+    
     await state.update_data(item_name=message.text)
     await message.answer("📂 Введите категорию:")
     await state.set_state(AdminStates.waiting_for_item_category)
@@ -126,6 +140,9 @@ async def process_item_name(message: Message, state: FSMContext):
 @router.message(AdminStates.waiting_for_item_category)
 async def process_item_category(message: Message, state: FSMContext):
     """Обработка категории позиции"""
+    if await clear_state_on_command(message, state):
+        return
+    
     await state.update_data(item_category=message.text)
     await message.answer("💰 Введите цену (в рублях):")
     await state.set_state(AdminStates.waiting_for_item_price)
@@ -133,6 +150,9 @@ async def process_item_category(message: Message, state: FSMContext):
 @router.message(AdminStates.waiting_for_item_price)
 async def process_item_price(message: Message, state: FSMContext):
     """Обработка цены позиции"""
+    if await clear_state_on_command(message, state):
+        return
+    
     try:
         price = float(message.text)
         if price < 0:
@@ -148,6 +168,9 @@ async def process_item_price(message: Message, state: FSMContext):
 @router.message(AdminStates.waiting_for_item_cost)
 async def process_item_cost(message: Message, state: FSMContext):
     """Обработка себестоимости позиции"""
+    if await clear_state_on_command(message, state):
+        return
+    
     try:
         cost = float(message.text)
         if cost < 0:
@@ -163,6 +186,9 @@ async def process_item_cost(message: Message, state: FSMContext):
 @router.message(AdminStates.waiting_for_item_min_stock)
 async def process_item_min_stock(message: Message, state: FSMContext):
     """Обработка минимального остатка"""
+    if await clear_state_on_command(message, state):
+        return
+    
     try:
         min_stock = int(message.text)
         if min_stock < 0:
@@ -219,6 +245,11 @@ async def cmd_update_stock(message: Message, state: FSMContext):
 @router.message(AdminStates.waiting_for_stock_name)
 async def process_stock_name(message: Message, state: FSMContext):
     """Обработка названия позиции для обновления остатка"""
+    # Если это команда, не обрабатываем здесь
+    if message.text and message.text.startswith('/'):
+        await state.clear()
+        return
+    
     item_name = message.text
     
     # Проверяем, существует ли позиция
@@ -236,6 +267,9 @@ async def process_stock_name(message: Message, state: FSMContext):
 @router.message(AdminStates.waiting_for_stock_count)
 async def process_stock_count(message: Message, state: FSMContext):
     """Обработка количества для обновления остатка"""
+    if await clear_state_on_command(message, state):
+        return
+    
     try:
         count = int(message.text)
         if count < 0:
@@ -452,6 +486,9 @@ async def process_arrival_item_selection(callback: CallbackQuery, state: FSMCont
 @router.message(AdminStates.waiting_for_arrival_quantity)
 async def process_arrival_quantity(message: Message, state: FSMContext):
     """Обработка ввода количества для прихода"""
+    if await clear_state_on_command(message, state):
+        return
+    
     try:
         quantity = int(message.text)
         if quantity <= 0:
