@@ -8,7 +8,7 @@ DATABASE_PATH = 'data/litkom.db'
 LOG_FILE = 'bot.log'
 
 # Константы для аналитики
-DELIVERY_COST = 50.0  # Стоимость доставки в рублях
+DELIVERY_COST = 5.0  # Стоимость доставки в злотых
 
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN не найден в переменных окружения")

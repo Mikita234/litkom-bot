@@ -22,6 +22,7 @@ class AdminStates(StatesGroup):
     waiting_for_item_min_stock = State()
     waiting_for_stock_name = State()
     waiting_for_stock_count = State()
+    waiting_for_arrival_quantity = State()
 
 @router.message(Command("set_admin"))
 async def cmd_set_admin(message: Message, state: FSMContext):
@@ -298,6 +299,27 @@ async def cmd_reset_sales(message: Message):
     else:
         await message.answer("❌ Ошибка при обнулении продаж.")
 
+@router.message(Command("arrival"))
+async def cmd_arrival(message: Message):
+    """Приход товара (добавление к остатку)"""
+    if not await db.is_admin(message.from_user.id):
+        await message.answer("❌ Только администратор может регистрировать приход.")
+        return
+    
+    # Получаем список товаров для выбора
+    items = await db.get_all_items()
+    if not items:
+        await message.answer("❌ Нет товаров в базе данных.")
+        return
+    
+    keyboard = create_items_keyboard(items, "arrival")
+    await message.answer(
+        "📦 <b>Приход товара</b>\n\n"
+        "Выберите товар для добавления к остатку:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
 @router.message(Command("inventory"))
 async def cmd_inventory(message: Message):
     """Обработчик команды /inventory - полная инвентаризация"""
@@ -400,3 +422,78 @@ async def cmd_profit(message: Message):
     from utils import format_profit_report
     text = format_profit_report(profit_data)
     await message.answer(text)
+
+# Обработчик выбора товара для прихода
+@router.callback_query(F.data.startswith("arrival_"))
+async def process_arrival_item_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора товара для прихода"""
+    item_id = int(callback.data.split("_")[1])
+    
+    # Получаем информацию о товаре
+    item = await db.get_item_by_id(item_id)
+    if not item:
+        await callback.answer("❌ Товар не найден")
+        return
+    
+    # Сохраняем ID товара в состоянии
+    await state.update_data(arrival_item_id=item_id)
+    await state.set_state(AdminStates.waiting_for_arrival_quantity)
+    
+    await callback.message.edit_text(
+        f"📦 <b>Приход товара</b>\n\n"
+        f"Товар: <b>{item['name']}</b>\n"
+        f"Текущий остаток: <b>{item['stock']} шт.</b>\n\n"
+        f"Введите количество для добавления к остатку:",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+# Обработчик ввода количества для прихода
+@router.message(AdminStates.waiting_for_arrival_quantity)
+async def process_arrival_quantity(message: Message, state: FSMContext):
+    """Обработка ввода количества для прихода"""
+    try:
+        quantity = int(message.text)
+        if quantity <= 0:
+            await message.answer("❌ Количество должно быть больше 0. Попробуйте снова:")
+            return
+        
+        # Получаем данные из состояния
+        data = await state.get_data()
+        item_id = data.get('arrival_item_id')
+        
+        if not item_id:
+            await message.answer("❌ Ошибка. Начните заново с команды /arrival")
+            await state.clear()
+            return
+        
+        # Получаем информацию о товаре
+        item = await db.get_item_by_id(item_id)
+        if not item:
+            await message.answer("❌ Товар не найден")
+            await state.clear()
+            return
+        
+        # Обновляем остаток
+        new_stock = item['stock'] + quantity
+        success = await db.update_stock(item['name'], new_stock)
+        
+        if success:
+            await message.answer(
+                f"✅ <b>Приход зарегистрирован</b>\n\n"
+                f"Товар: <b>{item['name']}</b>\n"
+                f"Добавлено: <b>+{quantity} шт.</b>\n"
+                f"Новый остаток: <b>{new_stock} шт.</b>",
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer("❌ Ошибка при обновлении остатка")
+        
+        await state.clear()
+        
+    except ValueError:
+        await message.answer("❌ Введите корректное число. Попробуйте снова:")
+    except Exception as e:
+        logger.error(f"Ошибка при обработке прихода: {e}")
+        await message.answer("❌ Произошла ошибка. Попробуйте снова.")
+        await state.clear()

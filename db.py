@@ -346,5 +346,30 @@ class Database:
             logger.error(f"Ошибка получения отчета по прибыли: {e}")
             return {'total_revenue': 0, 'total_cost': 0, 'total_profit': 0, 'profit_margin': 0}
 
+    async def get_item_by_id(self, item_id: int) -> dict:
+        """Получение товара по ID"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute(
+                    'SELECT id, name, category, stock, min_stock, price, cost, sold FROM literature WHERE id = ?',
+                    (item_id,)
+                )
+                row = await cursor.fetchone()
+                if row:
+                    return {
+                        'id': row[0],
+                        'name': row[1],
+                        'category': row[2],
+                        'stock': row[3],
+                        'min_stock': row[4],
+                        'price': row[5],
+                        'cost': row[6],
+                        'sold': row[7]
+                    }
+                return None
+        except Exception as e:
+            logger.error(f"Ошибка получения товара по ID: {e}")
+            return None
+
 # Глобальный экземпляр базы данных
 db = Database()
