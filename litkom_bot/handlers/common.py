@@ -22,6 +22,17 @@ async def cmd_start(message: Message):
     user_id = message.from_user.id
     role = await db.get_user_role(user_id)
     
+    # Если команда вызвана в группе, проверяем права администратора
+    if message.chat.type in ['group', 'supergroup']:
+        try:
+            chat_member = await message.bot.get_chat_member(message.chat.id, user_id)
+            if chat_member.status in ['creator', 'administrator'] and not role:
+                # Автоматически добавляем администраторов группы как ведущих
+                await db.add_user(user_id, "leader", message.from_user.full_name)
+                role = "leader"
+        except Exception:
+            pass
+    
     if not role:
         text = (
             "👋 Добро пожаловать в бот Литературного Комитета АН!\n\n"
@@ -35,6 +46,7 @@ async def cmd_start(message: Message):
             "/add_item - добавить позицию\n"
             "/update_stock - обновить остаток\n"
             "/report - отчёт по остаткам\n"
+            "/inventory - полная инвентаризация\n"
             "/low - низкие остатки\n"
             "/reset_sales - обнулить продажи\n"
             "/price - прайс-лист\n"

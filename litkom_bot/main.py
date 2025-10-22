@@ -66,11 +66,8 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        # Запускаем основную функцию и функцию поддержания активности
-        asyncio.run(asyncio.gather(
-            main(),
-            keep_alive()
-        ))
+        # Для Render.com используем простой запуск
+        asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Бот остановлен пользователем")
     except Exception as e:

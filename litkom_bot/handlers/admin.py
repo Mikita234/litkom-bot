@@ -56,6 +56,21 @@ async def cmd_add_leader(message: Message, state: FSMContext):
         await message.answer("❌ Только администратор может добавлять ведущих.")
         return
     
+    # Проверяем, что команда вызвана в группе
+    if message.chat.type not in ['group', 'supergroup']:
+        await message.answer("❌ Команда /add_leader работает только в группах.")
+        return
+    
+    # Проверяем, что пользователь - администратор группы
+    try:
+        chat_member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
+        if chat_member.status not in ['creator', 'administrator']:
+            await message.answer("❌ Только администраторы группы могут добавлять ведущих.")
+            return
+    except Exception:
+        await message.answer("❌ Ошибка проверки прав администратора.")
+        return
+    
     await message.answer(
         "👥 Добавление ведущего\n\n"
         "Перешлите сообщение от пользователя, которого хотите сделать ведущим, "
