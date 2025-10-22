@@ -211,6 +211,15 @@ async def process_stock_count(message: Message, state: FSMContext):
         
         success = await db.update_stock(item_name, count)
         if success:
+            # Проверяем, не стал ли остаток ниже минимума
+            report_data = await db.get_stock_report()
+            for item in report_data:
+                if item['name'] == item_name and item['stock'] <= item['min_stock']:
+                    await message.answer(
+                        f"✅ Остаток по {item_name} обновлён: {count} шт.\n\n"
+                        f"⚠️ Внимание! Остаток {item_name} ниже минимума ({item['stock']}/{item['min_stock']})."
+                    )
+                    return
             await message.answer(f"✅ Остаток по {item_name} обновлён: {count} шт.")
         else:
             await message.answer("❌ Ошибка при обновлении остатка.")
@@ -253,3 +262,41 @@ async def cmd_reset_sales(message: Message):
         await message.answer("✅ Продажи обнулены. Начинаем новый месяц!")
     else:
         await message.answer("❌ Ошибка при обнулении продаж.")
+
+@router.message(Command("inventory"))
+async def cmd_inventory(message: Message):
+    """Обработчик команды /inventory - полная инвентаризация"""
+    if not await db.is_admin(message.from_user.id):
+        await message.answer("❌ Только администратор может проводить инвентаризацию.")
+        return
+    
+    report_data = await db.get_stock_report()
+    if not report_data:
+        await message.answer("❌ Нет данных для инвентаризации.")
+        return
+    
+    text = "📋 Полная инвентаризация:\n\n"
+    total_items = 0
+    low_stock_count = 0
+    
+    for item in report_data:
+        name = item['name']
+        stock = item['stock']
+        min_stock = item['min_stock']
+        sold = item['sold']
+        price = item['price']
+        
+        total_items += stock
+        if stock <= min_stock:
+            low_stock_count += 1
+        
+        warning = " ⚠️" if stock <= min_stock else ""
+        text += f"📚 {name}\n"
+        text += f"   Остаток: {stock} шт. (мин: {min_stock}){warning}\n"
+        text += f"   Проданно: {sold} шт. на {sold * price:.0f} руб.\n\n"
+    
+    text += f"📊 Итого позиций: {len(report_data)}\n"
+    text += f"📦 Общий остаток: {total_items} шт.\n"
+    text += f"⚠️ Низкие остатки: {low_stock_count} позиций"
+    
+    await message.answer(text)
