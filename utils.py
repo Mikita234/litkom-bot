@@ -61,8 +61,8 @@ def format_low_stock(low_stock_data: List[Dict]) -> str:
     
     return "\n".join(warning_lines)
 
-def create_items_keyboard(items: List[str]) -> InlineKeyboardMarkup:
-    """Создание inline-клавиатуры с позициями для продажи"""
+def create_items_keyboard(items: list, action: str = "sell") -> InlineKeyboardMarkup:
+    """Создание inline-клавиатуры с позициями для различных действий"""
     keyboard = []
     
     # Разбиваем на строки по 2 кнопки
@@ -71,16 +71,43 @@ def create_items_keyboard(items: List[str]) -> InlineKeyboardMarkup:
         for j in range(2):
             if i + j < len(items):
                 item = items[i + j]
+                
+                # Если item - это словарь, берем название
+                if isinstance(item, dict):
+                    item_name = item['name']
+                    item_id = item['id']
+                else:
+                    item_name = item
+                    item_id = None
+                
                 # Ограничиваем длину названия для кнопки
-                button_text = item[:20] + "..." if len(item) > 20 else item
+                button_text = item_name[:20] + "..." if len(item_name) > 20 else item_name
+                
+                # Формируем callback_data в зависимости от действия
+                if action == "sell":
+                    callback_data = f"sell_{item_name}"
+                elif action == "arrival":
+                    callback_data = f"arrival_{item_id}"
+                elif action == "edit_item":
+                    callback_data = f"edit_item_{item_id}"
+                elif action == "delete_item":
+                    callback_data = f"delete_item_{item_id}"
+                elif action == "change_price":
+                    callback_data = f"change_price_{item_id}"
+                elif action == "change_name":
+                    callback_data = f"change_name_{item_id}"
+                else:
+                    callback_data = f"sell_{item_name}"
+                
                 row.append(InlineKeyboardButton(
                     text=button_text,
-                    callback_data=f"sell_{item}"
+                    callback_data=callback_data
                 ))
         keyboard.append(row)
     
     # Добавляем кнопку отмены
-    keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_sell")])
+    cancel_callback = "cancel_sell" if action == "sell" else "cancel_delete"
+    keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data=cancel_callback)])
     
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

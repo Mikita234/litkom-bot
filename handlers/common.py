@@ -171,7 +171,7 @@ async def cmd_sell(message: Message, state: FSMContext):
         await message.answer("❌ Нет доступных позиций для продажи.")
         return
     
-    keyboard = create_items_keyboard(items)
+    keyboard = create_items_keyboard(items, "sell")
     await message.answer(
         "💰 Выберите позицию для продажи:",
         reply_markup=keyboard
