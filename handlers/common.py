@@ -19,8 +19,11 @@ class SellStates(StatesGroup):
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     """Обработчик команды /start"""
+    logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
+    
     user_id = message.from_user.id
     role = await db.get_user_role(user_id)
+    logger.info(f"Роль пользователя {user_id}: {role}")
     
     # Если команда вызвана в группе, проверяем права администратора
     if message.chat.type in ['group', 'supergroup']:
@@ -67,6 +70,7 @@ async def cmd_start(message: Message):
         text = "❌ У вас нет доступа к боту. Обратитесь к администратору."
     
     await message.answer(text)
+    logger.info(f"Отправлен ответ пользователю {user_id}: {text[:50]}...")
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
