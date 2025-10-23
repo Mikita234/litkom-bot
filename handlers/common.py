@@ -132,17 +132,46 @@ async def cmd_price(message: Message):
         await message.answer("❌ Нет данных для прайс-листа.")
         return
     
-    # Сохраняем данные в состоянии для пагинации
-    from aiogram.fsm.context import FSMContext
-    state = FSMContext(storage=None, key=None)
-    await state.update_data(
-        price_data=price_data,
-        current_page=0,
-        items_per_page=20
-    )
+    # Показываем первую страницу без FSM (простая пагинация)
+    await show_price_page_simple(message, price_data, 0)
+
+async def show_price_page_simple(message: Message, price_data: list, current_page: int):
+    """Показать страницу прайс-листа без FSM"""
+    items_per_page = 20
+    total_pages = (len(price_data) + items_per_page - 1) // items_per_page
+    start_idx = current_page * items_per_page
+    end_idx = start_idx + items_per_page
     
-    # Показываем первую страницу
-    await show_price_page(message, state)
+    page_items = price_data[start_idx:end_idx]
+    
+    text = f"💰 <b>Прайс-лист (стр. {current_page + 1}/{total_pages})</b>\n\n"
+    
+    for item in page_items:
+        name = item['name']
+        price = item['price']
+        stock = item['stock']
+        text += f"📚 {name[:40]}{'...' if len(name) > 40 else ''}\n"
+        text += f"   💰 {price:.0f} zł | 📦 {stock} шт.\n\n"
+    
+    # Создаем клавиатуру пагинации
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = []
+    
+    if total_pages > 1:
+        row = []
+        if current_page > 0:
+            row.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"price_prev_{current_page-1}"))
+        if current_page < total_pages - 1:
+            row.append(InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"price_next_{current_page+1}"))
+        keyboard.append(row)
+    
+    keyboard.append([InlineKeyboardButton(text="❌ Закрыть", callback_data="price_close")])
+    
+    await message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
 
 async def show_price_page(message: Message, state: FSMContext):
     """Показать страницу прайс-листа с пагинацией"""
@@ -185,35 +214,26 @@ async def show_price_page(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
 
-@router.callback_query(F.data == "price_prev")
-async def price_prev(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("price_prev_"))
+async def price_prev(callback: CallbackQuery):
     """Предыдущая страница прайс-листа"""
-    data = await state.get_data()
-    current_page = data.get('current_page', 0)
-    if current_page > 0:
-        await state.update_data(current_page=current_page - 1)
-        await show_price_page(callback.message, state)
+    page_num = int(callback.data.split("_")[2])
+    price_data = await db.get_price_list()
+    await show_price_page_simple(callback.message, price_data, page_num)
     await callback.answer()
 
-@router.callback_query(F.data == "price_next")
-async def price_next(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("price_next_"))
+async def price_next(callback: CallbackQuery):
     """Следующая страница прайс-листа"""
-    data = await state.get_data()
-    current_page = data.get('current_page', 0)
-    price_data = data.get('price_data', [])
-    items_per_page = data.get('items_per_page', 20)
-    total_pages = (len(price_data) + items_per_page - 1) // items_per_page
-    
-    if current_page < total_pages - 1:
-        await state.update_data(current_page=current_page + 1)
-        await show_price_page(callback.message, state)
+    page_num = int(callback.data.split("_")[2])
+    price_data = await db.get_price_list()
+    await show_price_page_simple(callback.message, price_data, page_num)
     await callback.answer()
 
 @router.callback_query(F.data == "price_close")
-async def price_close(callback: CallbackQuery, state: FSMContext):
+async def price_close(callback: CallbackQuery):
     """Закрыть прайс-лист"""
     await callback.message.edit_text("❌ Прайс-лист закрыт.")
-    await state.clear()
     await callback.answer()
 
 @router.message(Command("stock"))
