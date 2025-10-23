@@ -23,7 +23,11 @@ def format_stock_report(report_data: List[Dict]) -> str:
     total_sales = 0
     report_lines = ["📚 Отчёт по литературе:"]
     
-    for item in report_data:
+    # Ограничиваем количество товаров для одного сообщения
+    max_items = 20
+    items_to_show = report_data[:max_items]
+    
+    for item in items_to_show:
         name = item['name']
         stock = item['stock']
         min_stock = item['min_stock']
@@ -33,8 +37,14 @@ def format_stock_report(report_data: List[Dict]) -> str:
         # Проверка на низкий остаток
         warning = " ⚠️" if stock <= min_stock else ""
         
-        report_lines.append(f"{name} — {stock}/{min_stock}{warning}")
+        # Сокращаем длинные названия
+        display_name = name[:30] + "..." if len(name) > 30 else name
+        report_lines.append(f"{display_name} — {stock}/{min_stock}{warning}")
         total_sales += sold * price
+    
+    # Если товаров больше лимита, показываем общее количество
+    if len(report_data) > max_items:
+        report_lines.append(f"\n... и ещё {len(report_data) - max_items} позиций")
     
     report_lines.append(f"\nОбщая сумма продаж: {total_sales:.0f} zł")
     return "\n".join(report_lines)
@@ -45,8 +55,22 @@ def format_price_list(price_data: List[Dict]) -> str:
         return "💰 Прайс-лист:\nНет доступных позиций"
     
     price_lines = ["💰 Прайс-лист:"]
-    for item in price_data:
-        price_lines.append(f"{item['name']} — {item['price']:.0f} zł")
+    
+    # Ограничиваем количество товаров для одного сообщения
+    max_items = 25
+    items_to_show = price_data[:max_items]
+    
+    for item in items_to_show:
+        name = item['name']
+        price = item['price']
+        
+        # Сокращаем длинные названия
+        display_name = name[:25] + "..." if len(name) > 25 else name
+        price_lines.append(f"{display_name} — {price:.0f} zł")
+    
+    # Если товаров больше лимита, показываем общее количество
+    if len(price_data) > max_items:
+        price_lines.append(f"\n... и ещё {len(price_data) - max_items} позиций")
     
     return "\n".join(price_lines)
 

@@ -403,49 +403,63 @@ async def cmd_inventory(message: Message):
         await message.answer("❌ Нет данных для инвентаризации.")
         return
     
-    text = "📋 Полная инвентаризация:\n\n"
+    # Разбиваем на части, чтобы не превысить лимит Telegram (4096 символов)
+    items_per_message = 15  # Примерно 15 товаров на сообщение
     total_items = 0
     low_stock_count = 0
     total_revenue = 0
     total_cost = 0
     
-    for item in report_data:
-        name = item['name']
-        stock = item['stock']
-        min_stock = item['min_stock']
-        sold = item['sold']
-        price = item['price']
-        cost = item.get('cost', 0)
-        
-        total_items += stock
-        if stock <= min_stock:
-            low_stock_count += 1
-        
-        revenue = sold * price
-        item_cost = sold * cost
-        profit = revenue - item_cost
-        
-        total_revenue += revenue
-        total_cost += item_cost
-        
-        warning = " ⚠️" if stock <= min_stock else ""
-        text += f"📚 {name}\n"
-        text += f"   Остаток: {stock} шт. (мин: {min_stock}){warning}\n"
-        text += f"   Проданно: {sold} шт. на {revenue:.0f} zł\n"
-        text += f"   Прибыль: {profit:.0f} zł\n\n"
+    # Отправляем заголовок
+    await message.answer("📋 <b>Полная инвентаризация</b>\n\nОбрабатываю данные...", parse_mode="HTML")
     
+    # Разбиваем товары на части
+    for i in range(0, len(report_data), items_per_message):
+        chunk = report_data[i:i + items_per_message]
+        text = ""
+        
+        for item in chunk:
+            name = item['name']
+            stock = item['stock']
+            min_stock = item['min_stock']
+            sold = item['sold']
+            price = item['price']
+            cost = item.get('cost', 0)
+            
+            total_items += stock
+            if stock <= min_stock:
+                low_stock_count += 1
+            
+            revenue = sold * price
+            item_cost = sold * cost
+            profit = revenue - item_cost
+            
+            total_revenue += revenue
+            total_cost += item_cost
+            
+            warning = " ⚠️" if stock <= min_stock else ""
+            text += f"📚 {name}\n"
+            text += f"   Остаток: {stock} шт. (мин: {min_stock}){warning}\n"
+            text += f"   Проданно: {sold} шт. на {revenue:.0f} zł\n"
+            text += f"   Прибыль: {profit:.0f} zł\n\n"
+        
+        # Отправляем часть
+        if text:
+            await message.answer(text)
+    
+    # Отправляем итоги
     total_profit = total_revenue - total_cost
     profit_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
     
-    text += f"📊 ИТОГО:\n"
-    text += f"   Позиций: {len(report_data)}\n"
-    text += f"   Остаток: {total_items} шт.\n"
-    text += f"   Низкие остатки: {low_stock_count}\n"
-    text += f"   Выручка: {total_revenue:.0f} zł\n"
-    text += f"   Затраты: {total_cost:.0f} zł\n"
-    text += f"   Прибыль: {total_profit:.0f} zł ({profit_margin:.1f}%)"
+    summary = f"📊 <b>ИТОГО:</b>\n"
+    summary += f"   Позиций: {len(report_data)}\n"
+    summary += f"   Остаток: {total_items} шт.\n"
+    summary += f"   Низкие остатки: {low_stock_count}\n"
+    summary += f"   Выручка: {total_revenue:.0f} zł\n"
+    summary += f"   Затраты: {total_cost:.0f} zł\n"
+    summary += f"   Прибыль: {total_profit:.0f} zł ({profit_margin:.1f}%)"
     
-    await message.answer(text)
+    await message.answer(summary, parse_mode="HTML")
 
 @router.message(Command("analytics"))
 async def cmd_analytics(message: Message):
