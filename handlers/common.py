@@ -183,7 +183,14 @@ async def process_item_selection(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора позиции для продажи"""
     await callback.answer()
     
-    item_name = callback.data[5:]  # Убираем "sell_"
+    item_id = int(callback.data[5:])  # Убираем "sell_" и получаем ID
+    item = await db.get_item_by_id(item_id)
+    
+    if not item:
+        await callback.message.edit_text("❌ Товар не найден.")
+        return
+    
+    item_name = item['name']
     await state.update_data(selected_item=item_name)
     
     keyboard = create_quantity_keyboard()

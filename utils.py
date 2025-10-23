@@ -84,8 +84,9 @@ def create_items_keyboard(items: list, action: str = "sell") -> InlineKeyboardMa
                 button_text = item_name[:20] + "..." if len(item_name) > 20 else item_name
                 
                 # Формируем callback_data в зависимости от действия
+                # ВСЕГДА используем item_id для избежания превышения лимита 64 байта
                 if action == "sell":
-                    callback_data = f"sell_{item_name}"
+                    callback_data = f"sell_{item_id}"
                 elif action == "arrival":
                     callback_data = f"arrival_{item_id}"
                 elif action == "edit_item":
@@ -97,7 +98,7 @@ def create_items_keyboard(items: list, action: str = "sell") -> InlineKeyboardMa
                 elif action == "change_name":
                     callback_data = f"change_name_{item_id}"
                 else:
-                    callback_data = f"sell_{item_name}"
+                    callback_data = f"sell_{item_id}"
                 
                 row.append(InlineKeyboardButton(
                     text=button_text,
