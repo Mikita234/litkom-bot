@@ -914,3 +914,39 @@ async def process_change_name_value(message: Message, state: FSMContext):
         await message.answer("❌ Ошибка при изменении названия.")
     
     await state.clear()
+
+@router.message(Command("reload_literature"))
+async def cmd_reload_literature(message: Message, state: FSMContext):
+    """Обработчик команды /reload_literature - перезагрузка литературы"""
+    if not await db.is_admin(message.from_user.id):
+        await message.answer("❌ Только администратор может перезагружать литературу.")
+        return
+    
+    await message.answer("🔄 <b>Начинаю перезагрузку литературы...</b>", parse_mode="HTML")
+    
+    try:
+        # Получаем полный список литературы
+        from load_literature import LITERATURE_DATA
+        
+        # Очищаем существующие данные
+        conn = await db.get_connection()
+        await conn.execute('DELETE FROM literature')
+        await conn.close()
+        
+        # Загружаем новые данные
+        loaded_count = 0
+        for name, category, price, cost, min_stock in LITERATURE_DATA:
+            success = await db.add_item(name, category, price, cost, min_stock)
+            if success:
+                loaded_count += 1
+        
+        await message.answer(
+            f"✅ <b>Литература перезагружена!</b>\n\n"
+            f"📚 Загружено: <b>{loaded_count}</b> позиций\n"
+            f"📊 Всего в базе: <b>{len(LITERATURE_DATA)}</b> позиций",
+            parse_mode="HTML"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка перезагрузки литературы: {e}")
+        await message.answer("❌ Ошибка при перезагрузке литературы.")
