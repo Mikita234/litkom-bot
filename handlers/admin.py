@@ -322,16 +322,23 @@ async def cmd_low(message: Message):
 
 @router.message(Command("reset_sales"))
 async def cmd_reset_sales(message: Message):
-    """Обработчик команды /reset_sales"""
+    """Обработчик команды /reset_sales - НЕ обнуляем, а архивируем данные"""
     if not await db.is_admin(message.from_user.id):
-        await message.answer("❌ Только администратор может обнулять продажи.")
+        await message.answer("❌ Только администратор может архивировать данные.")
         return
     
-    success = await db.reset_sales()
+    # Вместо обнуления - архивируем данные в monthly_sales
+    success = await db.archive_monthly_sales()
     if success:
-        await message.answer("✅ Продажи обнулены. Начинаем новый месяц!")
+        await message.answer(
+            "✅ <b>Данные за месяц архивированы!</b>\n\n"
+            "📊 Продажи сохранены в истории\n"
+            "📈 Доступны для аналитики\n"
+            "🔄 Можно начинать новый период",
+            parse_mode="HTML"
+        )
     else:
-        await message.answer("❌ Ошибка при обнулении продаж.")
+        await message.answer("❌ Ошибка при архивировании данных.")
 
 @router.message(Command("arrival"))
 async def cmd_arrival(message: Message):

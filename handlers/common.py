@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from db import db
-from utils import format_price_list, create_items_keyboard, create_quantity_keyboard
+from utils import format_price_list, create_items_keyboard, create_quantity_keyboard, create_main_keyboard, create_admin_menu_keyboard, create_reports_keyboard, create_management_keyboard
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -259,3 +259,148 @@ async def cancel_sell(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await callback.message.edit_text("❌ Продажа отменена.")
     await state.clear()
+
+# Обработчики кнопок
+@router.message(lambda message: message.text == "👑 Стать администратором")
+async def handle_become_admin(message: Message):
+    """Обработка кнопки 'Стать администратором'"""
+    user_id = message.from_user.id
+    role = await db.get_user_role(user_id)
+    
+    if role is None:
+        # Добавляем пользователя как администратора
+        success = await db.add_user(user_id, "admin", message.from_user.full_name)
+        if success:
+            await message.answer(
+                "✅ Вы назначены администратором!\n\n"
+                "Теперь у вас есть доступ ко всем функциям бота.",
+                reply_markup=create_main_keyboard("admin")
+            )
+        else:
+            await message.answer("❌ Ошибка при назначении администратором.")
+    else:
+        await message.answer("ℹ️ У вас уже есть роль в системе.")
+
+@router.message(lambda message: message.text == "📚 Прайс-лист")
+async def handle_price_list(message: Message):
+    """Обработка кнопки 'Прайс-лист'"""
+    price_data = await db.get_stock_report()
+    text = format_price_list(price_data)
+    await message.answer(text)
+
+@router.message(lambda message: message.text == "📊 Остатки")
+async def handle_stock(message: Message):
+    """Обработка кнопки 'Остатки'"""
+    report_data = await db.get_stock_report()
+    if not report_data:
+        await message.answer("❌ Нет данных об остатках.")
+        return
+    
+    text = "📊 Текущие остатки:\n\n"
+    for item in report_data:
+        warning = " ⚠️" if item['stock'] <= item['min_stock'] else ""
+        text += f"📚 {item['name']}\n"
+        text += f"   Остаток: {item['stock']} шт.{warning}\n"
+        text += f"   Цена: {item['price']:.0f} zł\n\n"
+    
+    await message.answer(text)
+
+@router.message(lambda message: message.text == "💰 Продажа")
+async def handle_sell_button(message: Message):
+    """Обработка кнопки 'Продажа'"""
+    user_id = message.from_user.id
+    role = await db.get_user_role(user_id)
+    
+    if role not in ["admin", "leader"]:
+        await message.answer("❌ У вас нет прав для продажи товаров.")
+        return
+    
+    # Получаем список товаров для продажи
+    items = await db.get_all_items()
+    if not items:
+        await message.answer("❌ Нет товаров для продажи.")
+        return
+    
+    keyboard = create_items_keyboard(items, "sell")
+    await message.answer(
+        "💰 <b>Продажа товара</b>\n\n"
+        "Выберите товар для продажи:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.message(lambda message: message.text == "📈 Отчёты")
+async def handle_reports_button(message: Message):
+    """Обработка кнопки 'Отчёты' (только для админов)"""
+    user_id = message.from_user.id
+    role = await db.get_user_role(user_id)
+    
+    if role != "admin":
+        await message.answer("❌ Только администратор может просматривать отчёты.")
+        return
+    
+    keyboard = create_reports_keyboard()
+    await message.answer(
+        "📊 <b>Отчёты и аналитика</b>\n\n"
+        "Выберите тип отчёта:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.message(lambda message: message.text == "⚙️ Управление")
+async def handle_management_button(message: Message):
+    """Обработка кнопки 'Управление' (только для админов)"""
+    user_id = message.from_user.id
+    role = await db.get_user_role(user_id)
+    
+    if role != "admin":
+        await message.answer("❌ Только администратор может управлять системой.")
+        return
+    
+    keyboard = create_management_keyboard()
+    await message.answer(
+        "⚙️ <b>Управление системой</b>\n\n"
+        "Выберите действие:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.message(lambda message: message.text == "❓ Помощь")
+async def handle_help_button(message: Message):
+    """Обработка кнопки 'Помощь'"""
+    user_id = message.from_user.id
+    role = await db.get_user_role(user_id)
+    
+    if role == "admin":
+        text = (
+            "👑 <b>Справка для администратора</b>\n\n"
+            "Доступные команды:\n"
+            "• /add_item - добавить товар\n"
+            "• /update_stock - обновить остаток\n"
+            "• /arrival - приход товара\n"
+            "• /report - полный отчёт\n"
+            "• /inventory - инвентаризация\n"
+            "• /analytics - аналитика спроса\n"
+            "• /profit - отчёт по прибыли\n"
+            "• /low - низкие остатки\n"
+            "• /reset_sales - обнулить продажи\n"
+            "• /add_leader - добавить ведущего\n\n"
+            "Используйте кнопки для быстрого доступа к функциям!"
+        )
+    elif role == "leader":
+        text = (
+            "📚 <b>Справка для ведущего</b>\n\n"
+            "Доступные команды:\n"
+            "• /price - прайс-лист\n"
+            "• /sell - продажа товара\n"
+            "• /stock - остатки\n\n"
+            "Используйте кнопки для быстрого доступа к функциям!"
+        )
+    else:
+        text = (
+            "👋 <b>Добро пожаловать!</b>\n\n"
+            "Этот бот поможет управлять литературой АН.\n"
+            "Нажмите '👑 Стать администратором' для начала работы."
+        )
+    
+    await message.answer(text, parse_mode="HTML")

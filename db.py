@@ -371,5 +371,60 @@ class Database:
             logger.error(f"Ошибка получения товара по ID: {e}")
             return None
 
+    async def archive_monthly_sales(self) -> bool:
+        """Архивирование продаж за месяц (альтернатива reset_sales)"""
+        try:
+            from datetime import datetime
+            current_date = datetime.now()
+            year = current_date.year
+            month = current_date.month
+            
+            async with aiosqlite.connect(self.db_path) as db:
+                # Получаем все товары с продажами
+                cursor = await db.execute(
+                    'SELECT id, name, sold, price, cost FROM literature WHERE sold > 0'
+                )
+                items = await cursor.fetchall()
+                
+                if not items:
+                    logger.info("Нет данных для архивирования")
+                    return True
+                
+                # Архивируем каждый товар
+                for item in items:
+                    item_id, name, sold, price, cost = item
+                    revenue = sold * price
+                    total_cost = sold * cost
+                    
+                    # Проверяем, есть ли уже запись за этот месяц
+                    existing = await db.fetchone(
+                        'SELECT id FROM monthly_sales WHERE item_id = ? AND year = ? AND month = ?',
+                        (item_id, year, month)
+                    )
+                    
+                    if existing:
+                        # Обновляем существующую запись
+                        await db.execute(
+                            'UPDATE monthly_sales SET sold_quantity = ?, total_revenue = ?, total_cost = ? WHERE item_id = ? AND year = ? AND month = ?',
+                            (sold, revenue, total_cost, item_id, year, month)
+                        )
+                    else:
+                        # Создаем новую запись
+                        await db.execute(
+                            'INSERT INTO monthly_sales (item_id, year, month, sold_quantity, total_revenue, total_cost) VALUES (?, ?, ?, ?, ?, ?)',
+                            (item_id, year, month, sold, revenue, total_cost)
+                        )
+                
+                # Обнуляем продажи для нового периода
+                await db.execute('UPDATE literature SET sold = 0')
+                await db.commit()
+                
+            logger.info(f"Архивированы данные за {month}.{year}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка архивирования: {e}")
+            return False
+
 # Глобальный экземпляр базы данных
 db = Database()
