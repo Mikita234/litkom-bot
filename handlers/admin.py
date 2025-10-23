@@ -330,14 +330,108 @@ async def process_stock_count(message: Message, state: FSMContext):
 
 @router.message(Command("report"))
 async def cmd_report(message: Message):
-    """Обработчик команды /report"""
+    """Обработчик команды /report с пагинацией"""
     if not await db.is_admin(message.from_user.id):
         await message.answer("❌ Только администратор может просматривать отчёты.")
         return
     
     report_data = await db.get_stock_report()
-    text = format_stock_report(report_data)
-    await message.answer(text)
+    if not report_data:
+        await message.answer("❌ Нет данных для отчёта.")
+        return
+    
+    # Сохраняем данные в состоянии для пагинации
+    from aiogram.fsm.context import FSMContext
+    state = FSMContext(storage=None, key=None)
+    await state.update_data(
+        report_data=report_data,
+        current_page=0,
+        items_per_page=15
+    )
+    
+    # Показываем первую страницу
+    await show_report_page(message, state)
+
+async def show_report_page(message: Message, state: FSMContext):
+    """Показать страницу отчёта с пагинацией"""
+    data = await state.get_data()
+    report_data = data.get('report_data', [])
+    current_page = data.get('current_page', 0)
+    items_per_page = data.get('items_per_page', 15)
+    
+    total_pages = (len(report_data) + items_per_page - 1) // items_per_page
+    start_idx = current_page * items_per_page
+    end_idx = start_idx + items_per_page
+    
+    page_items = report_data[start_idx:end_idx]
+    
+    text = f"📚 <b>Отчёт по литературе (стр. {current_page + 1}/{total_pages})</b>\n\n"
+    
+    total_sales = 0
+    for item in page_items:
+        name = item['name']
+        stock = item['stock']
+        min_stock = item['min_stock']
+        sold = item['sold']
+        price = item['price']
+        
+        warning = " ⚠️" if stock <= min_stock else ""
+        display_name = name[:25] + "..." if len(name) > 25 else name
+        text += f"{display_name} — {stock}/{min_stock}{warning}\n"
+        total_sales += sold * price
+    
+    text += f"\nОбщая сумма продаж: {total_sales:.0f} zł"
+    
+    # Создаем клавиатуру пагинации
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = []
+    
+    if total_pages > 1:
+        row = []
+        if current_page > 0:
+            row.append(InlineKeyboardButton(text="⬅️ Назад", callback_data="report_prev"))
+        if current_page < total_pages - 1:
+            row.append(InlineKeyboardButton(text="Вперёд ➡️", callback_data="report_next"))
+        keyboard.append(row)
+    
+    keyboard.append([InlineKeyboardButton(text="❌ Закрыть", callback_data="report_close")])
+    
+    await message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "report_prev")
+async def report_prev(callback: CallbackQuery, state: FSMContext):
+    """Предыдущая страница отчёта"""
+    data = await state.get_data()
+    current_page = data.get('current_page', 0)
+    if current_page > 0:
+        await state.update_data(current_page=current_page - 1)
+        await show_report_page(callback.message, state)
+    await callback.answer()
+
+@router.callback_query(F.data == "report_next")
+async def report_next(callback: CallbackQuery, state: FSMContext):
+    """Следующая страница отчёта"""
+    data = await state.get_data()
+    current_page = data.get('current_page', 0)
+    report_data = data.get('report_data', [])
+    items_per_page = data.get('items_per_page', 15)
+    total_pages = (len(report_data) + items_per_page - 1) // items_per_page
+    
+    if current_page < total_pages - 1:
+        await state.update_data(current_page=current_page + 1)
+        await show_report_page(callback.message, state)
+    await callback.answer()
+
+@router.callback_query(F.data == "report_close")
+async def report_close(callback: CallbackQuery, state: FSMContext):
+    """Закрыть отчёт"""
+    await callback.message.edit_text("❌ Отчёт закрыт.")
+    await state.clear()
+    await callback.answer()
 
 @router.message(Command("low"))
 async def cmd_low(message: Message):
@@ -393,7 +487,7 @@ async def cmd_arrival(message: Message):
 
 @router.message(Command("inventory"))
 async def cmd_inventory(message: Message):
-    """Обработчик команды /inventory - полная инвентаризация"""
+    """Обработчик команды /inventory - полная инвентаризация с пагинацией"""
     if not await db.is_admin(message.from_user.id):
         await message.answer("❌ Только администратор может проводить инвентаризацию.")
         return
@@ -403,63 +497,113 @@ async def cmd_inventory(message: Message):
         await message.answer("❌ Нет данных для инвентаризации.")
         return
     
-    # Разбиваем на части, чтобы не превысить лимит Telegram (4096 символов)
-    items_per_message = 15  # Примерно 15 товаров на сообщение
+    # Сохраняем данные в состоянии для пагинации
+    from aiogram.fsm.context import FSMContext
+    state = FSMContext(storage=None, key=None)
+    await state.update_data(
+        inventory_data=report_data,
+        current_page=0,
+        items_per_page=10
+    )
+    
+    # Показываем первую страницу
+    await show_inventory_page(message, state)
+
+async def show_inventory_page(message: Message, state: FSMContext):
+    """Показать страницу инвентаризации с пагинацией"""
+    data = await state.get_data()
+    inventory_data = data.get('inventory_data', [])
+    current_page = data.get('current_page', 0)
+    items_per_page = data.get('items_per_page', 10)
+    
+    total_pages = (len(inventory_data) + items_per_page - 1) // items_per_page
+    start_idx = current_page * items_per_page
+    end_idx = start_idx + items_per_page
+    
+    page_items = inventory_data[start_idx:end_idx]
+    
+    text = f"📋 <b>Инвентаризация (стр. {current_page + 1}/{total_pages})</b>\n\n"
+    
     total_items = 0
     low_stock_count = 0
     total_revenue = 0
     total_cost = 0
     
-    # Отправляем заголовок
-    await message.answer("📋 <b>Полная инвентаризация</b>\n\nОбрабатываю данные...", parse_mode="HTML")
-    
-    # Разбиваем товары на части
-    for i in range(0, len(report_data), items_per_message):
-        chunk = report_data[i:i + items_per_message]
-        text = ""
+    for item in page_items:
+        name = item['name']
+        stock = item['stock']
+        min_stock = item['min_stock']
+        sold = item['sold']
+        price = item['price']
+        cost = item.get('cost', 0)
         
-        for item in chunk:
-            name = item['name']
-            stock = item['stock']
-            min_stock = item['min_stock']
-            sold = item['sold']
-            price = item['price']
-            cost = item.get('cost', 0)
-            
-            total_items += stock
-            if stock <= min_stock:
-                low_stock_count += 1
-            
-            revenue = sold * price
-            item_cost = sold * cost
-            profit = revenue - item_cost
-            
-            total_revenue += revenue
-            total_cost += item_cost
-            
-            warning = " ⚠️" if stock <= min_stock else ""
-            text += f"📚 {name}\n"
-            text += f"   Остаток: {stock} шт. (мин: {min_stock}){warning}\n"
-            text += f"   Проданно: {sold} шт. на {revenue:.0f} zł\n"
-            text += f"   Прибыль: {profit:.0f} zł\n\n"
+        total_items += stock
+        if stock <= min_stock:
+            low_stock_count += 1
         
-        # Отправляем часть
-        if text:
-            await message.answer(text)
+        revenue = sold * price
+        item_cost = sold * cost
+        profit = revenue - item_cost
+        
+        total_revenue += revenue
+        total_cost += item_cost
+        
+        warning = " ⚠️" if stock <= min_stock else ""
+        text += f"📚 {name[:30]}{'...' if len(name) > 30 else ''}\n"
+        text += f"   Остаток: {stock} шт. (мин: {min_stock}){warning}\n"
+        text += f"   Проданно: {sold} шт. на {revenue:.0f} zł\n"
+        text += f"   Прибыль: {profit:.0f} zł\n\n"
     
-    # Отправляем итоги
-    total_profit = total_revenue - total_cost
-    profit_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
+    # Создаем клавиатуру пагинации
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = []
     
-    summary = f"📊 <b>ИТОГО:</b>\n"
-    summary += f"   Позиций: {len(report_data)}\n"
-    summary += f"   Остаток: {total_items} шт.\n"
-    summary += f"   Низкие остатки: {low_stock_count}\n"
-    summary += f"   Выручка: {total_revenue:.0f} zł\n"
-    summary += f"   Затраты: {total_cost:.0f} zł\n"
-    summary += f"   Прибыль: {total_profit:.0f} zł ({profit_margin:.1f}%)"
+    if total_pages > 1:
+        row = []
+        if current_page > 0:
+            row.append(InlineKeyboardButton(text="⬅️ Назад", callback_data="inventory_prev"))
+        if current_page < total_pages - 1:
+            row.append(InlineKeyboardButton(text="Вперёд ➡️", callback_data="inventory_next"))
+        keyboard.append(row)
     
-    await message.answer(summary, parse_mode="HTML")
+    keyboard.append([InlineKeyboardButton(text="❌ Закрыть", callback_data="inventory_close")])
+    
+    await message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "inventory_prev")
+async def inventory_prev(callback: CallbackQuery, state: FSMContext):
+    """Предыдущая страница инвентаризации"""
+    data = await state.get_data()
+    current_page = data.get('current_page', 0)
+    if current_page > 0:
+        await state.update_data(current_page=current_page - 1)
+        await show_inventory_page(callback.message, state)
+    await callback.answer()
+
+@router.callback_query(F.data == "inventory_next")
+async def inventory_next(callback: CallbackQuery, state: FSMContext):
+    """Следующая страница инвентаризации"""
+    data = await state.get_data()
+    current_page = data.get('current_page', 0)
+    inventory_data = data.get('inventory_data', [])
+    items_per_page = data.get('items_per_page', 10)
+    total_pages = (len(inventory_data) + items_per_page - 1) // items_per_page
+    
+    if current_page < total_pages - 1:
+        await state.update_data(current_page=current_page + 1)
+        await show_inventory_page(callback.message, state)
+    await callback.answer()
+
+@router.callback_query(F.data == "inventory_close")
+async def inventory_close(callback: CallbackQuery, state: FSMContext):
+    """Закрыть инвентаризацию"""
+    await callback.message.edit_text("❌ Инвентаризация закрыта.")
+    await state.clear()
+    await callback.answer()
 
 @router.message(Command("analytics"))
 async def cmd_analytics(message: Message):

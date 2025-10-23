@@ -119,7 +119,7 @@ async def cmd_help(message: Message):
 
 @router.message(Command("price"))
 async def cmd_price(message: Message):
-    """Обработчик команды /price"""
+    """Обработчик команды /price с пагинацией"""
     user_id = message.from_user.id
     role = await db.get_user_role(user_id)
     
@@ -128,8 +128,93 @@ async def cmd_price(message: Message):
         return
     
     price_data = await db.get_price_list()
-    text = format_price_list(price_data)
-    await message.answer(text)
+    if not price_data:
+        await message.answer("❌ Нет данных для прайс-листа.")
+        return
+    
+    # Сохраняем данные в состоянии для пагинации
+    from aiogram.fsm.context import FSMContext
+    state = FSMContext(storage=None, key=None)
+    await state.update_data(
+        price_data=price_data,
+        current_page=0,
+        items_per_page=20
+    )
+    
+    # Показываем первую страницу
+    await show_price_page(message, state)
+
+async def show_price_page(message: Message, state: FSMContext):
+    """Показать страницу прайс-листа с пагинацией"""
+    data = await state.get_data()
+    price_data = data.get('price_data', [])
+    current_page = data.get('current_page', 0)
+    items_per_page = data.get('items_per_page', 20)
+    
+    total_pages = (len(price_data) + items_per_page - 1) // items_per_page
+    start_idx = current_page * items_per_page
+    end_idx = start_idx + items_per_page
+    
+    page_items = price_data[start_idx:end_idx]
+    
+    text = f"💰 <b>Прайс-лист (стр. {current_page + 1}/{total_pages})</b>\n\n"
+    
+    for item in page_items:
+        name = item['name']
+        price = item['price']
+        display_name = name[:20] + "..." if len(name) > 20 else name
+        text += f"{display_name} — {price:.0f} zł\n"
+    
+    # Создаем клавиатуру пагинации
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = []
+    
+    if total_pages > 1:
+        row = []
+        if current_page > 0:
+            row.append(InlineKeyboardButton(text="⬅️ Назад", callback_data="price_prev"))
+        if current_page < total_pages - 1:
+            row.append(InlineKeyboardButton(text="Вперёд ➡️", callback_data="price_next"))
+        keyboard.append(row)
+    
+    keyboard.append([InlineKeyboardButton(text="❌ Закрыть", callback_data="price_close")])
+    
+    await message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "price_prev")
+async def price_prev(callback: CallbackQuery, state: FSMContext):
+    """Предыдущая страница прайс-листа"""
+    data = await state.get_data()
+    current_page = data.get('current_page', 0)
+    if current_page > 0:
+        await state.update_data(current_page=current_page - 1)
+        await show_price_page(callback.message, state)
+    await callback.answer()
+
+@router.callback_query(F.data == "price_next")
+async def price_next(callback: CallbackQuery, state: FSMContext):
+    """Следующая страница прайс-листа"""
+    data = await state.get_data()
+    current_page = data.get('current_page', 0)
+    price_data = data.get('price_data', [])
+    items_per_page = data.get('items_per_page', 20)
+    total_pages = (len(price_data) + items_per_page - 1) // items_per_page
+    
+    if current_page < total_pages - 1:
+        await state.update_data(current_page=current_page + 1)
+        await show_price_page(callback.message, state)
+    await callback.answer()
+
+@router.callback_query(F.data == "price_close")
+async def price_close(callback: CallbackQuery, state: FSMContext):
+    """Закрыть прайс-лист"""
+    await callback.message.edit_text("❌ Прайс-лист закрыт.")
+    await state.clear()
+    await callback.answer()
 
 @router.message(Command("stock"))
 async def cmd_stock(message: Message):
