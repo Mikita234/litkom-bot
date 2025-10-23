@@ -497,17 +497,57 @@ async def cmd_inventory(message: Message):
         await message.answer("❌ Нет данных для инвентаризации.")
         return
     
-    # Сохраняем данные в состоянии для пагинации
-    from aiogram.fsm.context import FSMContext
-    state = FSMContext(storage=None, key=None)
-    await state.update_data(
-        inventory_data=report_data,
-        current_page=0,
-        items_per_page=10
-    )
+    # Показываем первую страницу без FSM (простая пагинация)
+    await show_inventory_page_simple(message, report_data, 0)
+
+async def show_inventory_page_simple(message: Message, report_data: list, current_page: int):
+    """Показать страницу инвентаризации без FSM"""
+    items_per_page = 10
+    total_pages = (len(report_data) + items_per_page - 1) // items_per_page
+    start_idx = current_page * items_per_page
+    end_idx = start_idx + items_per_page
     
-    # Показываем первую страницу
-    await show_inventory_page(message, state)
+    page_items = report_data[start_idx:end_idx]
+    
+    text = f"📋 <b>Инвентаризация (стр. {current_page + 1}/{total_pages})</b>\n\n"
+    
+    for item in page_items:
+        name = item['name']
+        stock = item['stock']
+        min_stock = item['min_stock']
+        sold = item['sold']
+        price = item['price']
+        cost = item.get('cost', 0)
+        
+        revenue = sold * price
+        item_cost = sold * cost
+        profit = revenue - item_cost
+        
+        warning = " ⚠️" if stock <= min_stock else ""
+        text += f"📚 {name[:30]}{'...' if len(name) > 30 else ''}\n"
+        text += f"   Остаток: {stock} шт. (мин: {min_stock}){warning}\n"
+        text += f"   Проданно: {sold} шт. на {revenue:.0f} zł\n"
+        text += f"   Прибыль: {profit:.0f} zł\n\n"
+    
+    # Создаем клавиатуру пагинации
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = []
+    
+    if total_pages > 1:
+        row = []
+        if current_page > 0:
+            row.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"inventory_prev_{current_page-1}"))
+        if current_page < total_pages - 1:
+            row.append(InlineKeyboardButton(text="Вперёд ➡️", callback_data=f"inventory_next_{current_page+1}"))
+        keyboard.append(row)
+    
+    keyboard.append([InlineKeyboardButton(text="❌ Закрыть", callback_data="inventory_close")])
+    
+    await message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="HTML"
+    )
 
 async def show_inventory_page(message: Message, state: FSMContext):
     """Показать страницу инвентаризации с пагинацией"""
@@ -574,35 +614,26 @@ async def show_inventory_page(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
 
-@router.callback_query(F.data == "inventory_prev")
-async def inventory_prev(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("inventory_prev_"))
+async def inventory_prev(callback: CallbackQuery):
     """Предыдущая страница инвентаризации"""
-    data = await state.get_data()
-    current_page = data.get('current_page', 0)
-    if current_page > 0:
-        await state.update_data(current_page=current_page - 1)
-        await show_inventory_page(callback.message, state)
+    page_num = int(callback.data.split("_")[2])
+    report_data = await db.get_stock_report()
+    await show_inventory_page_simple(callback.message, report_data, page_num)
     await callback.answer()
 
-@router.callback_query(F.data == "inventory_next")
-async def inventory_next(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("inventory_next_"))
+async def inventory_next(callback: CallbackQuery):
     """Следующая страница инвентаризации"""
-    data = await state.get_data()
-    current_page = data.get('current_page', 0)
-    inventory_data = data.get('inventory_data', [])
-    items_per_page = data.get('items_per_page', 10)
-    total_pages = (len(inventory_data) + items_per_page - 1) // items_per_page
-    
-    if current_page < total_pages - 1:
-        await state.update_data(current_page=current_page + 1)
-        await show_inventory_page(callback.message, state)
+    page_num = int(callback.data.split("_")[2])
+    report_data = await db.get_stock_report()
+    await show_inventory_page_simple(callback.message, report_data, page_num)
     await callback.answer()
 
 @router.callback_query(F.data == "inventory_close")
-async def inventory_close(callback: CallbackQuery, state: FSMContext):
+async def inventory_close(callback: CallbackQuery):
     """Закрыть инвентаризацию"""
     await callback.message.edit_text("❌ Инвентаризация закрыта.")
-    await state.clear()
     await callback.answer()
 
 @router.message(Command("analytics"))
