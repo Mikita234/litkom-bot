@@ -7,7 +7,6 @@ from aiogram.types import Message
 
 from config import TELEGRAM_TOKEN, DATABASE_PATH
 # Принудительно используем PostgreSQL на Render.com
-import os
 try:
     from db_postgres import db
     print("📊 Используется PostgreSQL")

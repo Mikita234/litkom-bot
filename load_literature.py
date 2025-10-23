@@ -11,7 +11,13 @@ import os
 # Добавляем текущую директорию в путь
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from db import db
+# Используем ту же логику выбора БД, что и в main.py
+try:
+    from db_postgres import db
+    print("📊 Используется PostgreSQL")
+except ImportError:
+    from db import db
+    print("📊 Fallback на SQLite")
 
 # Данные литературы для загрузки
 LITERATURE_DATA = [
