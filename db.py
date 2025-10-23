@@ -150,7 +150,7 @@ class Database:
                     await db.commit()
                     
                     total_price = price * qty
-                    message = f"Продано: {name} ×{qty} — осталось {new_stock} шт., сумма {total_price:.0f} руб."
+                    message = f"Продано: {name} ×{qty} — осталось {new_stock} шт., сумма {total_price:.0f} zł"
                     logger.info(f"💸 {message}")
                     return True, message
         except Exception as e:

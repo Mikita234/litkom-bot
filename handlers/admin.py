@@ -144,7 +144,7 @@ async def process_item_category(message: Message, state: FSMContext):
         return
     
     await state.update_data(item_category=message.text)
-    await message.answer("💰 Введите цену (в рублях):")
+    await message.answer("💰 Введите цену (в злотых):")
     await state.set_state(AdminStates.waiting_for_item_price)
 
 @router.message(AdminStates.waiting_for_item_price)
@@ -210,8 +210,8 @@ async def process_item_min_stock(message: Message, state: FSMContext):
                 f"✅ Позиция добавлена:\n"
                 f"📚 {data['item_name']}\n"
                 f"📂 {data['item_category']}\n"
-                f"💰 Цена: {data['item_price']:.0f} руб.\n"
-                f"💸 Себестоимость: {data['item_cost']:.0f} руб.\n"
+                f"💰 Цена: {data['item_price']:.0f} zł\n"
+                f"💸 Себестоимость: {data['item_cost']:.0f} zł\n"
                 f"📊 Мин. остаток: {min_stock} шт.\n"
                 f"💎 Маржа: {profit_margin:.1f}%"
             )
@@ -394,8 +394,8 @@ async def cmd_inventory(message: Message):
         warning = " ⚠️" if stock <= min_stock else ""
         text += f"📚 {name}\n"
         text += f"   Остаток: {stock} шт. (мин: {min_stock}){warning}\n"
-        text += f"   Проданно: {sold} шт. на {revenue:.0f} руб.\n"
-        text += f"   Прибыль: {profit:.0f} руб.\n\n"
+        text += f"   Проданно: {sold} шт. на {revenue:.0f} zł\n"
+        text += f"   Прибыль: {profit:.0f} zł\n\n"
     
     total_profit = total_revenue - total_cost
     profit_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
@@ -404,9 +404,9 @@ async def cmd_inventory(message: Message):
     text += f"   Позиций: {len(report_data)}\n"
     text += f"   Остаток: {total_items} шт.\n"
     text += f"   Низкие остатки: {low_stock_count}\n"
-    text += f"   Выручка: {total_revenue:.0f} руб.\n"
-    text += f"   Затраты: {total_cost:.0f} руб.\n"
-    text += f"   Прибыль: {total_profit:.0f} руб. ({profit_margin:.1f}%)"
+    text += f"   Выручка: {total_revenue:.0f} zł\n"
+    text += f"   Затраты: {total_cost:.0f} zł\n"
+    text += f"   Прибыль: {total_profit:.0f} zł ({profit_margin:.1f}%)"
     
     await message.answer(text)
 
