@@ -6,7 +6,14 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from config import TELEGRAM_TOKEN, DATABASE_PATH
-from db import db
+# Используем PostgreSQL если доступен, иначе SQLite
+import os
+if os.getenv('DATABASE_URL'):
+    from db_postgres import db
+    print("📊 Используется PostgreSQL")
+else:
+    from db import db
+    print("📊 Используется SQLite")
 from utils import setup_logging, keep_alive
 from handlers import admin, leader, common
 
