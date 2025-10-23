@@ -120,7 +120,10 @@ async def cmd_help(message: Message):
 @router.message(Command("price"))
 async def cmd_price(message: Message):
     """Обработчик команды /price"""
-    if not await db.is_leader(message.from_user.id):
+    user_id = message.from_user.id
+    role = await db.get_user_role(user_id)
+    
+    if role not in ['admin', 'leader']:
         await message.answer("❌ У вас нет доступа к этой команде.")
         return
     
@@ -131,7 +134,10 @@ async def cmd_price(message: Message):
 @router.message(Command("stock"))
 async def cmd_stock(message: Message):
     """Обработчик команды /stock"""
-    if not await db.is_leader(message.from_user.id):
+    user_id = message.from_user.id
+    role = await db.get_user_role(user_id)
+    
+    if role not in ['admin', 'leader']:
         await message.answer("❌ У вас нет доступа к этой команде.")
         return
     
@@ -153,7 +159,10 @@ async def cmd_stock(message: Message):
 @router.message(Command("sell"))
 async def cmd_sell(message: Message, state: FSMContext):
     """Обработчик команды /sell"""
-    if not await db.is_leader(message.from_user.id):
+    user_id = message.from_user.id
+    role = await db.get_user_role(user_id)
+    
+    if role not in ['admin', 'leader']:
         await message.answer("❌ У вас нет доступа к этой команде.")
         return
     
