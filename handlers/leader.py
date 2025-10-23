@@ -3,7 +3,12 @@ from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
 
-from db import db
+# Используем ту же базу данных, что и в main.py
+import os
+try:
+    from db_postgres import db
+except ImportError:
+    from db import db
 from utils import format_price_list
 
 logger = logging.getLogger(__name__)

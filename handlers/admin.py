@@ -5,7 +5,12 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from db import db
+# Используем ту же базу данных, что и в main.py
+import os
+try:
+    from db_postgres import db
+except ImportError:
+    from db import db
 from utils import format_stock_report, format_low_stock
 
 logger = logging.getLogger(__name__)

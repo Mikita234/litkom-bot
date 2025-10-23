@@ -5,7 +5,12 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from db import db
+# Используем ту же базу данных, что и в main.py
+import os
+try:
+    from db_postgres import db
+except ImportError:
+    from db import db
 from utils import format_price_list, create_items_keyboard, create_quantity_keyboard, create_main_keyboard, create_admin_menu_keyboard, create_reports_keyboard, create_management_keyboard
 
 logger = logging.getLogger(__name__)
