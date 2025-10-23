@@ -59,6 +59,25 @@ async def main():
         
         logger.info("Бот запущен")
         
+        # Для Render.com добавляем HTTP сервер
+        import aiohttp
+        from aiohttp import web
+        
+        async def health_check(request):
+            return web.Response(text="Bot is running", status=200)
+        
+        # Создаем HTTP сервер
+        app = web.Application()
+        app.router.add_get('/', health_check)
+        app.router.add_get('/health', health_check)
+        
+        # Запускаем HTTP сервер в фоне
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', 10000)
+        await site.start()
+        logger.info("HTTP сервер запущен на порту 10000")
+        
         # Запускаем бота
         await dp.start_polling(bot)
         
