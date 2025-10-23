@@ -6,20 +6,16 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 from config import TELEGRAM_TOKEN, DATABASE_PATH
-# Используем PostgreSQL если доступен, иначе SQLite
+# Принудительно используем PostgreSQL на Render.com
 import os
-if os.getenv('DATABASE_URL'):
+try:
     from db_postgres import db
     print("📊 Используется PostgreSQL")
-else:
-    # Принудительно используем PostgreSQL на Render.com
-    try:
-        from db_postgres import db
-        print("📊 Принудительно используется PostgreSQL")
-    except Exception as e:
-        print(f"❌ Ошибка PostgreSQL: {e}")
-        from db import db
-        print("📊 Fallback на SQLite")
+except Exception as e:
+    print(f"❌ Ошибка PostgreSQL: {e}")
+    # Fallback на SQLite только в крайнем случае
+    from db import db
+    print("📊 Fallback на SQLite")
 from utils import setup_logging, keep_alive
 from handlers import admin, leader, common
 
