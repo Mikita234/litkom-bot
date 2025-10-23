@@ -31,6 +31,20 @@ async def main():
         await db.init_db()
         logger.info("База данных инициализирована")
         
+        # Проверяем, есть ли данные в базе, если нет - загружаем литературу
+        items = await db.get_all_items()
+        if not items:
+            logger.info("База данных пуста, загружаем литературу...")
+            try:
+                from load_literature import LITERATURE_DATA
+                for name, category, price, cost, min_stock in LITERATURE_DATA:
+                    await db.add_item(name, category, price, cost, min_stock)
+                logger.info(f"Загружено {len(LITERATURE_DATA)} позиций литературы")
+            except Exception as e:
+                logger.error(f"Ошибка загрузки литературы: {e}")
+        else:
+            logger.info(f"В базе данных {len(items)} позиций литературы")
+        
         # Создаем бота и диспетчер
         bot = Bot(token=TELEGRAM_TOKEN)
         dp = Dispatcher()
