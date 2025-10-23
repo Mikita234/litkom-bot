@@ -393,6 +393,93 @@ class Database:
                 'total_profit': 0,
                 'top_items': []
             }
+    
+    async def update_item(self, item_id: int, name: str = None, category: str = None, 
+                         price: float = None, cost: float = None, min_stock: int = None) -> bool:
+        """Обновление товара"""
+        try:
+            conn = await self.get_connection()
+            
+            # Строим динамический запрос
+            updates = []
+            params = []
+            param_count = 1
+            
+            if name is not None:
+                updates.append(f"name = ${param_count}")
+                params.append(name)
+                param_count += 1
+            
+            if category is not None:
+                updates.append(f"category = ${param_count}")
+                params.append(category)
+                param_count += 1
+            
+            if price is not None:
+                updates.append(f"price = ${param_count}")
+                params.append(price)
+                param_count += 1
+            
+            if cost is not None:
+                updates.append(f"cost = ${param_count}")
+                params.append(cost)
+                param_count += 1
+            
+            if min_stock is not None:
+                updates.append(f"min_stock = ${param_count}")
+                params.append(min_stock)
+                param_count += 1
+            
+            if not updates:
+                await conn.close()
+                return False
+            
+            # Добавляем item_id в конец
+            params.append(item_id)
+            
+            query = f"UPDATE literature SET {', '.join(updates)} WHERE id = ${param_count}"
+            await conn.execute(query, *params)
+            await conn.close()
+            
+            logger.info(f"Товар {item_id} обновлен")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка обновления товара: {e}")
+            return False
+    
+    async def delete_item(self, item_id: int) -> bool:
+        """Удаление товара"""
+        try:
+            conn = await self.get_connection()
+            
+            # Получаем название товара для лога
+            item_name = await conn.fetchval('SELECT name FROM literature WHERE id = $1', item_id)
+            
+            # Удаляем товар
+            await conn.execute('DELETE FROM literature WHERE id = $1', item_id)
+            await conn.close()
+            
+            logger.info(f"Товар {item_name} (ID: {item_id}) удален")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка удаления товара: {e}")
+            return False
+    
+    async def get_item_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """Получение товара по названию"""
+        try:
+            conn = await self.get_connection()
+            row = await conn.fetchrow(
+                'SELECT id, name, category, stock, min_stock, price, cost, sold FROM literature WHERE name = $1',
+                name
+            )
+            await conn.close()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Ошибка получения товара по названию: {e}")
+            return None
 
 # Глобальный экземпляр базы данных
 db = Database()

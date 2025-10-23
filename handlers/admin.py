@@ -36,6 +36,15 @@ class AdminStates(StatesGroup):
     waiting_for_stock_name = State()
     waiting_for_stock_count = State()
     waiting_for_arrival_quantity = State()
+    # Новые состояния для редактирования
+    waiting_for_edit_item_selection = State()
+    waiting_for_edit_field = State()
+    waiting_for_edit_value = State()
+    waiting_for_delete_item_selection = State()
+    waiting_for_change_price_item = State()
+    waiting_for_change_price_value = State()
+    waiting_for_change_name_item = State()
+    waiting_for_change_name_value = State()
 
 @router.message(Command("set_admin"))
 async def cmd_set_admin(message: Message, state: FSMContext):
@@ -539,10 +548,362 @@ async def process_arrival_quantity(message: Message, state: FSMContext):
             await message.answer("❌ Ошибка при обновлении остатка")
         
         await state.clear()
+
+# ===== НОВЫЕ КОМАНДЫ ДЛЯ РЕДАКТИРОВАНИЯ ТОВАРОВ =====
+
+@router.message(Command("edit_item"))
+async def cmd_edit_item(message: Message, state: FSMContext):
+    """Обработчик команды /edit_item"""
+    if not await db.is_admin(message.from_user.id):
+        await message.answer("❌ Только администратор может редактировать товары.")
+        return
+    
+    # Получаем список всех товаров
+    items = await db.get_all_items()
+    if not items:
+        await message.answer("📚 Нет товаров для редактирования.")
+        return
+    
+    # Создаем клавиатуру с товарами
+    from utils import create_items_keyboard
+    keyboard = create_items_keyboard(items, "edit_item")
+    
+    await message.answer(
+        "📝 <b>Выберите товар для редактирования:</b>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.waiting_for_edit_item_selection)
+
+@router.callback_query(F.data.startswith("edit_item_"))
+async def process_edit_item_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора товара для редактирования"""
+    if await clear_state_on_command(callback.message, state):
+        return
+    
+    item_id = int(callback.data.split("_")[2])
+    item = await db.get_item_by_id(item_id)
+    
+    if not item:
+        await callback.message.edit_text("❌ Товар не найден.")
+        return
+    
+    await state.update_data(edit_item_id=item_id)
+    
+    # Создаем клавиатуру с полями для редактирования
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Название", callback_data="edit_field_name")],
+        [InlineKeyboardButton(text="📂 Категория", callback_data="edit_field_category")],
+        [InlineKeyboardButton(text="💰 Цена", callback_data="edit_field_price")],
+        [InlineKeyboardButton(text="💸 Себестоимость", callback_data="edit_field_cost")],
+        [InlineKeyboardButton(text="📊 Мин. остаток", callback_data="edit_field_min_stock")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="edit_cancel")]
+    ])
+    
+    await callback.message.edit_text(
+        f"📝 <b>Редактирование товара:</b>\n\n"
+        f"<b>Название:</b> {item['name']}\n"
+        f"<b>Категория:</b> {item['category']}\n"
+        f"<b>Цена:</b> {item['price']} zł\n"
+        f"<b>Себестоимость:</b> {item['cost']} zł\n"
+        f"<b>Мин. остаток:</b> {item['min_stock']} шт.\n\n"
+        f"<b>Выберите поле для редактирования:</b>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.waiting_for_edit_field)
+
+@router.callback_query(F.data.startswith("edit_field_"))
+async def process_edit_field_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора поля для редактирования"""
+    if await clear_state_on_command(callback.message, state):
+        return
+    
+    field = callback.data.split("_")[2]
+    field_names = {
+        "name": "название",
+        "category": "категорию", 
+        "price": "цену",
+        "cost": "себестоимость",
+        "min_stock": "минимальный остаток"
+    }
+    
+    await state.update_data(edit_field=field)
+    
+    await callback.message.edit_text(
+        f"✏️ <b>Введите новое {field_names[field]}:</b>",
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.waiting_for_edit_value)
+
+@router.message(AdminStates.waiting_for_edit_value)
+async def process_edit_value(message: Message, state: FSMContext):
+    """Обработка нового значения поля"""
+    if await clear_state_on_command(message, state):
+        return
+    
+    data = await state.get_data()
+    item_id = data.get('edit_item_id')
+    field = data.get('edit_field')
+    new_value = message.text
+    
+    # Валидация в зависимости от поля
+    if field in ['price', 'cost']:
+        try:
+            new_value = float(new_value)
+            if new_value < 0:
+                await message.answer("❌ Значение не может быть отрицательным.")
+                return
+        except ValueError:
+            await message.answer("❌ Введите корректное число.")
+            return
+    elif field == 'min_stock':
+        try:
+            new_value = int(new_value)
+            if new_value < 0:
+                await message.answer("❌ Минимальный остаток не может быть отрицательным.")
+                return
+        except ValueError:
+            await message.answer("❌ Введите корректное число.")
+            return
+    
+    # Обновляем товар
+    update_data = {field: new_value}
+    success = await db.update_item(item_id, **update_data)
+    
+    if success:
+        await message.answer(f"✅ Товар успешно обновлен!")
+    else:
+        await message.answer("❌ Ошибка при обновлении товара.")
+    
+    await state.clear()
+
+@router.callback_query(F.data == "edit_cancel")
+async def cancel_edit(callback: CallbackQuery, state: FSMContext):
+    """Отмена редактирования"""
+    await callback.message.edit_text("❌ Редактирование отменено.")
+    await state.clear()
+
+@router.message(Command("delete_item"))
+async def cmd_delete_item(message: Message, state: FSMContext):
+    """Обработчик команды /delete_item"""
+    if not await db.is_admin(message.from_user.id):
+        await message.answer("❌ Только администратор может удалять товары.")
+        return
+    
+    # Получаем список всех товаров
+    items = await db.get_all_items()
+    if not items:
+        await message.answer("📚 Нет товаров для удаления.")
+        return
+    
+    # Создаем клавиатуру с товарами
+    from utils import create_items_keyboard
+    keyboard = create_items_keyboard(items, "delete_item")
+    
+    await message.answer(
+        "🗑️ <b>Выберите товар для удаления:</b>\n\n"
+        "⚠️ <b>Внимание:</b> Товар будет удален навсегда!",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.waiting_for_delete_item_selection)
+
+@router.callback_query(F.data.startswith("delete_item_"))
+async def process_delete_item_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка удаления товара"""
+    if await clear_state_on_command(callback.message, state):
+        return
+    
+    item_id = int(callback.data.split("_")[2])
+    item = await db.get_item_by_id(item_id)
+    
+    if not item:
+        await callback.message.edit_text("❌ Товар не найден.")
+        return
+    
+    # Создаем клавиатуру подтверждения
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_{item_id}")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete")]
+    ])
+    
+    await callback.message.edit_text(
+        f"🗑️ <b>Подтвердите удаление:</b>\n\n"
+        f"<b>Товар:</b> {item['name']}\n"
+        f"<b>Категория:</b> {item['category']}\n"
+        f"<b>Остаток:</b> {item['stock']} шт.\n\n"
+        f"⚠️ <b>Это действие нельзя отменить!</b>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("confirm_delete_"))
+async def confirm_delete_item(callback: CallbackQuery, state: FSMContext):
+    """Подтверждение удаления товара"""
+    if await clear_state_on_command(callback.message, state):
+        return
+    
+    item_id = int(callback.data.split("_")[2])
+    success = await db.delete_item(item_id)
+    
+    if success:
+        await callback.message.edit_text("✅ Товар успешно удален!")
+    else:
+        await callback.message.edit_text("❌ Ошибка при удалении товара.")
+    
+    await state.clear()
+
+@router.callback_query(F.data == "cancel_delete")
+async def cancel_delete(callback: CallbackQuery, state: FSMContext):
+    """Отмена удаления"""
+    await callback.message.edit_text("❌ Удаление отменено.")
+    await state.clear()
+
+@router.message(Command("change_price"))
+async def cmd_change_price(message: Message, state: FSMContext):
+    """Обработчик команды /change_price"""
+    if not await db.is_admin(message.from_user.id):
+        await message.answer("❌ Только администратор может изменять цены.")
+        return
+    
+    # Получаем список всех товаров
+    items = await db.get_all_items()
+    if not items:
+        await message.answer("📚 Нет товаров для изменения цены.")
+        return
+    
+    # Создаем клавиатуру с товарами
+    from utils import create_items_keyboard
+    keyboard = create_items_keyboard(items, "change_price")
+    
+    await message.answer(
+        "💰 <b>Выберите товар для изменения цены:</b>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.waiting_for_change_price_item)
+
+@router.callback_query(F.data.startswith("change_price_"))
+async def process_change_price_item(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора товара для изменения цены"""
+    if await clear_state_on_command(callback.message, state):
+        return
+    
+    item_id = int(callback.data.split("_")[2])
+    item = await db.get_item_by_id(item_id)
+    
+    if not item:
+        await callback.message.edit_text("❌ Товар не найден.")
+        return
+    
+    await state.update_data(change_price_item_id=item_id)
+    
+    await callback.message.edit_text(
+        f"💰 <b>Изменение цены товара:</b>\n\n"
+        f"<b>Товар:</b> {item['name']}\n"
+        f"<b>Текущая цена:</b> {item['price']} zł\n\n"
+        f"<b>Введите новую цену:</b>",
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.waiting_for_change_price_value)
+
+@router.message(AdminStates.waiting_for_change_price_value)
+async def process_change_price_value(message: Message, state: FSMContext):
+    """Обработка новой цены"""
+    if await clear_state_on_command(message, state):
+        return
+    
+    try:
+        new_price = float(message.text)
+        if new_price < 0:
+            await message.answer("❌ Цена не может быть отрицательной.")
+            return
+        
+        data = await state.get_data()
+        item_id = data.get('change_price_item_id')
+        
+        success = await db.update_item(item_id, price=new_price)
+        
+        if success:
+            await message.answer(f"✅ Цена успешно изменена на {new_price} zł!")
+        else:
+            await message.answer("❌ Ошибка при изменении цены.")
         
     except ValueError:
-        await message.answer("❌ Введите корректное число. Попробуйте снова:")
-    except Exception as e:
-        logger.error(f"Ошибка при обработке прихода: {e}")
-        await message.answer("❌ Произошла ошибка. Попробуйте снова.")
-        await state.clear()
+        await message.answer("❌ Введите корректную цену (число).")
+        return
+    
+    await state.clear()
+
+@router.message(Command("change_name"))
+async def cmd_change_name(message: Message, state: FSMContext):
+    """Обработчик команды /change_name"""
+    if not await db.is_admin(message.from_user.id):
+        await message.answer("❌ Только администратор может изменять названия.")
+        return
+    
+    # Получаем список всех товаров
+    items = await db.get_all_items()
+    if not items:
+        await message.answer("📚 Нет товаров для изменения названия.")
+        return
+    
+    # Создаем клавиатуру с товарами
+    from utils import create_items_keyboard
+    keyboard = create_items_keyboard(items, "change_name")
+    
+    await message.answer(
+        "📝 <b>Выберите товар для изменения названия:</b>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.waiting_for_change_name_item)
+
+@router.callback_query(F.data.startswith("change_name_"))
+async def process_change_name_item(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора товара для изменения названия"""
+    if await clear_state_on_command(callback.message, state):
+        return
+    
+    item_id = int(callback.data.split("_")[2])
+    item = await db.get_item_by_id(item_id)
+    
+    if not item:
+        await callback.message.edit_text("❌ Товар не найден.")
+        return
+    
+    await state.update_data(change_name_item_id=item_id)
+    
+    await callback.message.edit_text(
+        f"📝 <b>Изменение названия товара:</b>\n\n"
+        f"<b>Текущее название:</b> {item['name']}\n\n"
+        f"<b>Введите новое название:</b>",
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.waiting_for_change_name_value)
+
+@router.message(AdminStates.waiting_for_change_name_value)
+async def process_change_name_value(message: Message, state: FSMContext):
+    """Обработка нового названия"""
+    if await clear_state_on_command(message, state):
+        return
+    
+    new_name = message.text.strip()
+    if not new_name:
+        await message.answer("❌ Название не может быть пустым.")
+        return
+    
+    data = await state.get_data()
+    item_id = data.get('change_name_item_id')
+    
+    success = await db.update_item(item_id, name=new_name)
+    
+    if success:
+        await message.answer(f"✅ Название успешно изменено на '{new_name}'!")
+    else:
+        await message.answer("❌ Ошибка при изменении названия.")
+    
+    await state.clear()
