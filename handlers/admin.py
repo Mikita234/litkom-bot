@@ -548,6 +548,13 @@ async def process_arrival_quantity(message: Message, state: FSMContext):
             await message.answer("❌ Ошибка при обновлении остатка")
         
         await state.clear()
+        
+    except ValueError:
+        await message.answer("❌ Введите корректное число. Попробуйте снова:")
+    except Exception as e:
+        logger.error(f"Ошибка при обработке прихода: {e}")
+        await message.answer("❌ Произошла ошибка. Попробуйте снова.")
+        await state.clear()
 
 # ===== НОВЫЕ КОМАНДЫ ДЛЯ РЕДАКТИРОВАНИЯ ТОВАРОВ =====
 
