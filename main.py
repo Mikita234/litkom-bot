@@ -28,7 +28,7 @@ async def main():
         os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
         
         # Инициализируем базу данных
-        await db.init_db()
+        await db.init_database()
         logger.info("База данных инициализирована")
         
         # Проверяем, есть ли данные в базе, если нет - загружаем литературу
@@ -65,7 +65,8 @@ async def main():
         logger.error(f"Критическая ошибка: {e}")
         raise
     finally:
-        await bot.session.close()
+        if 'bot' in locals():
+            await bot.session.close()
 
 if __name__ == "__main__":
     try:
