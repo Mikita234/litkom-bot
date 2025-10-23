@@ -12,8 +12,14 @@ if os.getenv('DATABASE_URL'):
     from db_postgres import db
     print("📊 Используется PostgreSQL")
 else:
-    from db import db
-    print("📊 Используется SQLite")
+    # Принудительно используем PostgreSQL на Render.com
+    try:
+        from db_postgres import db
+        print("📊 Принудительно используется PostgreSQL")
+    except Exception as e:
+        print(f"❌ Ошибка PostgreSQL: {e}")
+        from db import db
+        print("📊 Fallback на SQLite")
 from utils import setup_logging, keep_alive
 from handlers import admin, leader, common
 
