@@ -264,15 +264,31 @@ async def process_stock_name(message: Message, state: FSMContext):
         await state.clear()
         return
     
-    item_name = message.text
+    user_input = message.text.strip()
     
-    # Проверяем, существует ли позиция
+    # Получаем список всех товаров
     report_data = await db.get_stock_report()
-    item_exists = any(item['name'] == item_name for item in report_data)
     
-    if not item_exists:
-        await message.answer("❌ Позиция не найдена. Проверьте название.")
-        return
+    # Проверяем, ввел ли пользователь номер
+    try:
+        item_number = int(user_input)
+        if 1 <= item_number <= len(report_data):
+            item = report_data[item_number - 1]
+            item_name = item['name']
+        else:
+            await message.answer("❌ Неверный номер позиции. Попробуйте снова:")
+            return
+    except ValueError:
+        # Пользователь ввел название - ищем по частичному совпадению
+        item_name = None
+        for item in report_data:
+            if user_input.lower() in item['name'].lower():
+                item_name = item['name']
+                break
+        
+        if not item_name:
+            await message.answer("❌ Позиция не найдена. Проверьте название или номер.")
+            return
     
     await state.update_data(stock_name=item_name)
     await message.answer(f"📊 Введите новый остаток для '{item_name}':")
