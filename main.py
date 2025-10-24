@@ -59,18 +59,42 @@ async def main():
         
         logger.info("Бот запущен")
         
-        # Для Render.com добавляем HTTP сервер
+        # Для Render.com добавляем HTTP сервер с улучшенным health check
         import aiohttp
         from aiohttp import web
-        
+
         async def health_check(request):
+            """Проверка здоровья сервиса"""
             return web.Response(text="Bot is running", status=200)
-        
+
+        async def root_handler(request):
+            """Основной эндпоинт"""
+            return web.Response(text="Litkom Bot Active", status=200)
+
+        async def status_handler(request):
+            """Детальный статус"""
+            try:
+                # Проверяем подключение к БД
+                items_count = len(await db.get_all_items())
+                return web.json_response({
+                    "status": "healthy",
+                    "bot": "active",
+                    "database": "connected",
+                    "items_count": items_count,
+                    "timestamp": asyncio.get_event_loop().time()
+                })
+            except Exception as e:
+                return web.json_response({
+                    "status": "unhealthy",
+                    "error": str(e)
+                }, status=500)
+
         # Создаем HTTP сервер
         app = web.Application()
-        app.router.add_get('/', health_check)
+        app.router.add_get('/', root_handler)
         app.router.add_get('/health', health_check)
-        
+        app.router.add_get('/status', status_handler)
+
         # Запускаем HTTP сервер в фоне
         runner = web.AppRunner(app)
         await runner.setup()

@@ -25,11 +25,11 @@ class SellStates(StatesGroup):
 async def cmd_start(message: Message):
     """Обработчик команды /start"""
     logger.info(f"Получена команда /start от пользователя {message.from_user.id}")
-    
+
     user_id = message.from_user.id
     role = await db.get_user_role(user_id)
     logger.info(f"Роль пользователя {user_id}: {role}")
-    
+
     # Если команда вызвана в группе, проверяем права администратора
     if message.chat.type in ['group', 'supergroup']:
         try:
@@ -40,40 +40,41 @@ async def cmd_start(message: Message):
                 role = "leader"
         except Exception:
             pass
-    
+
     if not role:
         text = (
             "👋 Добро пожаловать в бот Литературного Комитета АН!\n\n"
             "Для начала работы введите команду /set_admin, чтобы назначить себя администратором."
         )
     elif role == "admin":
+        from utils import create_admin_menu_keyboard
         text = (
-            "👑 Вы администратор бота.\n\n"
-            "Доступные команды:\n"
+            "👑 <b>Вы администратор бота!</b>\n\n"
+            "Используйте кнопки ниже для управления или команды:\n\n"
+            "📋 <b>Основные команды:</b>\n"
+            "/set_admin - назначить админа\n"
             "/add_leader - добавить ведущего\n"
-            "/add_item - добавить позицию\n"
-            "/update_stock - обновить остаток\n"
-            "/report - отчёт по остаткам\n"
-            "/inventory - полная инвентаризация\n"
-            "/low - низкие остатки\n"
-            "/reset_sales - обнулить продажи\n"
-            "/price - прайс-лист\n"
-            "/sell - продажа\n"
-            "/stock - остатки\n"
-            "/help - справка"
+            "/add_item - добавить товар\n"
+            "/report - отчёты\n"
+            "/inventory - инвентаризация\n\n"
+            "💡 <b>Совет:</b> Используйте кнопки для удобной навигации!"
         )
+        await message.answer(text, reply_markup=create_admin_menu_keyboard(), parse_mode="HTML")
     elif role == "leader":
+        from utils import create_leader_menu_keyboard
         text = (
-            "📚 Вы ведущий бота.\n\n"
-            "Доступные команды:\n"
+            "📚 <b>Вы ведущий бота!</b>\n\n"
+            "Используйте кнопки ниже для работы или команды:\n\n"
+            "💰 <b>Основные команды:</b>\n"
             "/price - прайс-лист\n"
-            "/sell - продажа\n"
-            "/stock - остатки\n"
-            "/help - справка"
+            "/sell - продать товар\n"
+            "/stock - остатки\n\n"
+            "💡 <b>Совет:</b> Используйте кнопки для удобной навигации!"
         )
+        await message.answer(text, reply_markup=create_leader_menu_keyboard(), parse_mode="HTML")
     else:
         text = "❌ У вас нет доступа к боту. Обратитесь к администратору."
-    
+
     await message.answer(text)
     logger.info(f"Отправлен ответ пользователю {user_id}: {text[:50]}...")
 
@@ -236,6 +237,32 @@ async def price_close(callback: CallbackQuery):
     await callback.message.edit_text("❌ Прайс-лист закрыт.")
     await callback.answer()
 
+# ===== ОБРАБОТЧИКИ КНОПОК ДЛЯ ВЕДУЩЕГО =====
+
+@router.callback_query(F.data == "leader_price")
+async def leader_price_button(callback: CallbackQuery):
+    """Обработчик кнопки прайс-лист для ведущего"""
+    await callback.answer()
+    await cmd_price(callback.message)
+
+@router.callback_query(F.data == "leader_sell")
+async def leader_sell_button(callback: CallbackQuery, state: FSMContext):
+    """Обработчик кнопки продажа для ведущего"""
+    await callback.answer()
+    await cmd_sell(callback.message, state)
+
+@router.callback_query(F.data == "leader_stock")
+async def leader_stock_button(callback: CallbackQuery):
+    """Обработчик кнопки остатки для ведущего"""
+    await callback.answer()
+    await cmd_stock(callback.message)
+
+@router.callback_query(F.data == "leader_help")
+async def leader_help_button(callback: CallbackQuery):
+    """Обработчик кнопки помощь для ведущего"""
+    await callback.answer()
+    await cmd_help(callback.message)
+
 @router.message(Command("stock"))
 async def cmd_stock(message: Message):
     """Обработчик команды /stock"""
@@ -276,10 +303,14 @@ async def cmd_sell(message: Message, state: FSMContext):
         await message.answer("❌ Нет доступных позиций для продажи.")
         return
     
-    keyboard = create_items_keyboard(items, "sell")
+    # Показываем категории для удобства
+    keyboard = create_items_keyboard(items, "sell", show_categories=True)
     await message.answer(
-        "💰 Выберите позицию для продажи:",
-        reply_markup=keyboard
+        "💰 <b>Выберите категорию или товар для продажи:</b>\n\n"
+        "📂 Используйте категории для удобного поиска\n"
+        "📚 Или выберите 'Все товары' для полного списка",
+        reply_markup=keyboard,
+        parse_mode="HTML"
     )
     await state.set_state(SellStates.waiting_for_item)
 
@@ -287,23 +318,72 @@ async def cmd_sell(message: Message, state: FSMContext):
 async def process_item_selection(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора позиции для продажи"""
     await callback.answer()
-    
+
     item_id = int(callback.data[5:])  # Убираем "sell_" и получаем ID
     item = await db.get_item_by_id(item_id)
-    
+
     if not item:
         await callback.message.edit_text("❌ Товар не найден.")
         return
-    
+
     item_name = item['name']
     await state.update_data(selected_item=item_name)
-    
+
     keyboard = create_quantity_keyboard()
     await callback.message.edit_text(
         f"📦 Выбрано: {item_name}\n\nВыберите количество:",
         reply_markup=keyboard
     )
     await state.set_state(SellStates.waiting_for_quantity)
+
+@router.callback_query(F.data.startswith("category_"))
+async def process_category_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора категории"""
+    await callback.answer()
+
+    category = callback.data[9:]  # Убираем "category_"
+
+    items = await db.get_all_items()
+    if not items:
+        await callback.message.edit_text("❌ Нет товаров для продажи.")
+        return
+
+    if category == "all":
+        # Показываем все товары
+        keyboard = create_items_keyboard(items, "sell")
+        await callback.message.edit_text(
+            "📚 <b>Все товары:</b>\n\nВыберите позицию для продажи:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    else:
+        # Показываем товары из категории
+        from utils import create_category_keyboard
+        keyboard = create_category_keyboard(items, category, "sell")
+        await callback.message.edit_text(
+            f"📂 <b>Категория: {category}</b>\n\nВыберите позицию для продажи:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+@router.callback_query(F.data == "back_to_categories")
+async def back_to_categories(callback: CallbackQuery, state: FSMContext):
+    """Возврат к выбору категорий"""
+    await callback.answer()
+
+    items = await db.get_all_items()
+    if not items:
+        await callback.message.edit_text("❌ Нет товаров для продажи.")
+        return
+
+    keyboard = create_items_keyboard(items, "sell", show_categories=True)
+    await callback.message.edit_text(
+        "💰 <b>Выберите категорию или товар для продажи:</b>\n\n"
+        "📂 Используйте категории для удобного поиска\n"
+        "📚 Или выберите 'Все товары' для полного списка",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
 
 @router.callback_query(F.data.startswith("qty_"))
 async def process_quantity_selection(callback: CallbackQuery, state: FSMContext):

@@ -85,55 +85,116 @@ def format_low_stock(low_stock_data: List[Dict]) -> str:
     
     return "\n".join(warning_lines)
 
-def create_items_keyboard(items: list, action: str = "sell") -> InlineKeyboardMarkup:
+def create_items_keyboard(items: list, action: str = "sell", show_categories: bool = False) -> InlineKeyboardMarkup:
     """Создание inline-клавиатуры с позициями для различных действий"""
     keyboard = []
-    
-    # Разбиваем на строки по 2 кнопки
-    for i in range(0, len(items), 2):
+
+    # Если показываем категории, группируем по категориям
+    if show_categories:
+        # Получаем уникальные категории
+        categories = {}
+        for item in items:
+            if isinstance(item, dict):
+                category = item.get('category', 'Другие')
+                if category not in categories:
+                    categories[category] = []
+                categories[category].append(item)
+
+        # Добавляем кнопки категорий
+        for category in sorted(categories.keys()):
+            keyboard.append([InlineKeyboardButton(
+                text=f"📂 {category}",
+                callback_data=f"category_{category}"
+            )])
+
+        # Добавляем кнопку "Все товары"
+        keyboard.append([InlineKeyboardButton(
+            text="📚 Все товары",
+            callback_data="category_all"
+        )])
+    else:
+        # Обычный список товаров
+        # Разбиваем на строки по 2 кнопки
+        for i in range(0, len(items), 2):
+            row = []
+            for j in range(2):
+                if i + j < len(items):
+                    item = items[i + j]
+
+                    # Если item - это словарь, берем название
+                    if isinstance(item, dict):
+                        item_name = item['name']
+                        item_id = item['id']
+                    else:
+                        item_name = item
+                        item_id = None
+
+                    # Ограничиваем длину названия для кнопки
+                    button_text = item_name[:20] + "..." if len(item_name) > 20 else item_name
+
+                    # Формируем callback_data в зависимости от действия
+                    if action == "sell":
+                        callback_data = f"sell_{item_id}"
+                    elif action == "arrival":
+                        callback_data = f"arrival_{item_id}"
+                    elif action == "edit_item":
+                        callback_data = f"edit_item_{item_id}"
+                    elif action == "delete_item":
+                        callback_data = f"delete_item_{item_id}"
+                    elif action == "change_price":
+                        callback_data = f"change_price_{item_id}"
+                    elif action == "change_name":
+                        callback_data = f"change_name_{item_id}"
+                    else:
+                        callback_data = f"sell_{item_id}"
+
+                    row.append(InlineKeyboardButton(
+                        text=button_text,
+                        callback_data=callback_data
+                    ))
+            keyboard.append(row)
+
+    # Добавляем кнопку отмены
+    cancel_callback = "cancel_sell" if action == "sell" else "cancel_delete"
+    keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data=cancel_callback)])
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def create_category_keyboard(items: list, category: str, action: str = "sell") -> InlineKeyboardMarkup:
+    """Создание клавиатуры с товарами из определенной категории"""
+    keyboard = []
+
+    # Фильтруем товары по категории
+    category_items = [item for item in items if item.get('category') == category]
+
+    # Добавляем товары из категории
+    for i in range(0, len(category_items), 2):
         row = []
         for j in range(2):
-            if i + j < len(items):
-                item = items[i + j]
-                
-                # Если item - это словарь, берем название
-                if isinstance(item, dict):
-                    item_name = item['name']
-                    item_id = item['id']
-                else:
-                    item_name = item
-                    item_id = None
-                
-                # Ограничиваем длину названия для кнопки
+            if i + j < len(category_items):
+                item = category_items[i + j]
+                item_name = item['name']
+                item_id = item['id']
+
                 button_text = item_name[:20] + "..." if len(item_name) > 20 else item_name
-                
-                # Формируем callback_data в зависимости от действия
-                # ВСЕГДА используем item_id для избежания превышения лимита 64 байта
+
                 if action == "sell":
                     callback_data = f"sell_{item_id}"
-                elif action == "arrival":
-                    callback_data = f"arrival_{item_id}"
-                elif action == "edit_item":
-                    callback_data = f"edit_item_{item_id}"
-                elif action == "delete_item":
-                    callback_data = f"delete_item_{item_id}"
-                elif action == "change_price":
-                    callback_data = f"change_price_{item_id}"
-                elif action == "change_name":
-                    callback_data = f"change_name_{item_id}"
                 else:
                     callback_data = f"sell_{item_id}"
-                
+
                 row.append(InlineKeyboardButton(
                     text=button_text,
                     callback_data=callback_data
                 ))
         keyboard.append(row)
-    
-    # Добавляем кнопку отмены
-    cancel_callback = "cancel_sell" if action == "sell" else "cancel_delete"
-    keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data=cancel_callback)])
-    
+
+    # Добавляем кнопки навигации
+    keyboard.append([
+        InlineKeyboardButton(text="⬅️ Назад к категориям", callback_data="back_to_categories"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_sell")
+    ])
+
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def create_quantity_keyboard() -> InlineKeyboardMarkup:
@@ -255,8 +316,44 @@ def create_admin_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="📈 Аналитика", callback_data="admin_analytics")],
         [InlineKeyboardButton(text="💰 Прибыль", callback_data="admin_profit")],
         [InlineKeyboardButton(text="⚠️ Низкие остатки", callback_data="admin_low_stock")],
-        [InlineKeyboardButton(text="👥 Управление", callback_data="admin_management")],
+        [InlineKeyboardButton(text="📦 Управление товаром", callback_data="admin_management")],
         [InlineKeyboardButton(text="🔄 Обнулить продажи", callback_data="admin_reset_sales")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def create_leader_menu_keyboard() -> InlineKeyboardMarkup:
+    """Создание меню для ведущего"""
+    keyboard = [
+        [InlineKeyboardButton(text="💰 Прайс-лист", callback_data="leader_price")],
+        [InlineKeyboardButton(text="📦 Продать товар", callback_data="leader_sell")],
+        [InlineKeyboardButton(text="📊 Остатки", callback_data="leader_stock")],
+        [InlineKeyboardButton(text="❓ Помощь", callback_data="leader_help")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def create_management_menu_keyboard() -> InlineKeyboardMarkup:
+    """Создание меню управления товарами для админа"""
+    keyboard = [
+        [InlineKeyboardButton(text="➕ Добавить товар", callback_data="manage_add_item")],
+        [InlineKeyboardButton(text="📦 Приход товара", callback_data="manage_arrival")],
+        [InlineKeyboardButton(text="📝 Редактировать товар", callback_data="manage_edit_item")],
+        [InlineKeyboardButton(text="💰 Изменить цену", callback_data="manage_change_price")],
+        [InlineKeyboardButton(text="📋 Изменить название", callback_data="manage_change_name")],
+        [InlineKeyboardButton(text="🗑️ Удалить товар", callback_data="manage_delete_item")],
+        [InlineKeyboardButton(text="🔄 Обновить остатки", callback_data="manage_update_stock")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_admin")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def create_reports_menu_keyboard() -> InlineKeyboardMarkup:
+    """Создание меню отчётов для админа"""
+    keyboard = [
+        [InlineKeyboardButton(text="📊 Отчёт по остаткам", callback_data="reports_stock")],
+        [InlineKeyboardButton(text="📋 Полная инвентаризация", callback_data="reports_inventory")],
+        [InlineKeyboardButton(text="⚠️ Низкие остатки", callback_data="reports_low_stock")],
+        [InlineKeyboardButton(text="📈 Аналитика спроса", callback_data="reports_analytics")],
+        [InlineKeyboardButton(text="💰 Отчёт по прибыли", callback_data="reports_profit")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_admin")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 

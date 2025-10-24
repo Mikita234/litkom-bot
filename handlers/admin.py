@@ -458,6 +458,141 @@ async def report_close(callback: CallbackQuery):
     await callback.message.edit_text("❌ Отчёт закрыт.")
     await callback.answer()
 
+# ===== ОБРАБОТЧИКИ КНОПОК ДЛЯ АДМИНА =====
+
+@router.callback_query(F.data == "admin_reports")
+async def admin_reports_button(callback: CallbackQuery):
+    """Обработчик кнопки отчёты"""
+    await callback.answer()
+    from utils import create_reports_menu_keyboard
+    await callback.message.edit_text(
+        "📊 <b>Выберите тип отчёта:</b>",
+        reply_markup=create_reports_menu_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "admin_management")
+async def admin_management_button(callback: CallbackQuery):
+    """Обработчик кнопки управление"""
+    await callback.answer()
+    from utils import create_management_menu_keyboard
+    await callback.message.edit_text(
+        "📦 <b>Управление товарами:</b>\n\nВыберите действие:",
+        reply_markup=create_management_menu_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "admin_analytics")
+async def admin_analytics_button(callback: CallbackQuery):
+    """Обработчик кнопки аналитика"""
+    await callback.answer()
+    await cmd_analytics(callback.message)
+
+@router.callback_query(F.data == "admin_profit")
+async def admin_profit_button(callback: CallbackQuery):
+    """Обработчик кнопки прибыль"""
+    await callback.answer()
+    await cmd_profit(callback.message)
+
+@router.callback_query(F.data == "admin_low_stock")
+async def admin_low_stock_button(callback: CallbackQuery):
+    """Обработчик кнопки низкие остатки"""
+    await callback.answer()
+    await cmd_low(callback.message)
+
+@router.callback_query(F.data == "admin_reset_sales")
+async def admin_reset_sales_button(callback: CallbackQuery):
+    """Обработчик кнопки обнулить продажи"""
+    await callback.answer()
+    await cmd_reset_sales(callback.message)
+
+@router.callback_query(F.data == "back_to_admin")
+async def back_to_admin(callback: CallbackQuery):
+    """Возврат к админскому меню"""
+    await callback.answer()
+    from utils import create_admin_menu_keyboard
+    await callback.message.edit_text(
+        "👑 <b>Админское меню:</b>\n\nВыберите действие:",
+        reply_markup=create_admin_menu_keyboard(),
+        parse_mode="HTML"
+    )
+
+# ===== ОБРАБОТЧИКИ МЕНЮ УПРАВЛЕНИЯ =====
+
+@router.callback_query(F.data == "manage_add_item")
+async def manage_add_item_button(callback: CallbackQuery, state: FSMContext):
+    """Обработчик добавления товара"""
+    await callback.answer()
+    await cmd_add_item(callback.message, state)
+
+@router.callback_query(F.data == "manage_arrival")
+async def manage_arrival_button(callback: CallbackQuery, state: FSMContext):
+    """Обработчик прихода товара"""
+    await callback.answer()
+    await cmd_arrival(callback.message, state)
+
+@router.callback_query(F.data == "manage_edit_item")
+async def manage_edit_item_button(callback: CallbackQuery, state: FSMContext):
+    """Обработчик редактирования товара"""
+    await callback.answer()
+    await cmd_edit_item(callback.message, state)
+
+@router.callback_query(F.data == "manage_change_price")
+async def manage_change_price_button(callback: CallbackQuery, state: FSMContext):
+    """Обработчик изменения цены"""
+    await callback.answer()
+    await cmd_change_price(callback.message, state)
+
+@router.callback_query(F.data == "manage_change_name")
+async def manage_change_name_button(callback: CallbackQuery, state: FSMContext):
+    """Обработчик изменения названия"""
+    await callback.answer()
+    await cmd_change_name(callback.message, state)
+
+@router.callback_query(F.data == "manage_delete_item")
+async def manage_delete_item_button(callback: CallbackQuery, state: FSMContext):
+    """Обработчик удаления товара"""
+    await callback.answer()
+    await cmd_delete_item(callback.message, state)
+
+@router.callback_query(F.data == "manage_update_stock")
+async def manage_update_stock_button(callback: CallbackQuery, state: FSMContext):
+    """Обработчик обновления остатков"""
+    await callback.answer()
+    await cmd_update_stock(callback.message, state)
+
+# ===== ОБРАБОТЧИКИ МЕНЮ ОТЧЁТОВ =====
+
+@router.callback_query(F.data == "reports_stock")
+async def reports_stock_button(callback: CallbackQuery):
+    """Обработчик отчёта по остаткам"""
+    await callback.answer()
+    await cmd_report(callback.message)
+
+@router.callback_query(F.data == "reports_inventory")
+async def reports_inventory_button(callback: CallbackQuery):
+    """Обработчик полной инвентаризации"""
+    await callback.answer()
+    await cmd_inventory(callback.message)
+
+@router.callback_query(F.data == "reports_low_stock")
+async def reports_low_stock_button(callback: CallbackQuery):
+    """Обработчик низких остатков"""
+    await callback.answer()
+    await cmd_low(callback.message)
+
+@router.callback_query(F.data == "reports_analytics")
+async def reports_analytics_button(callback: CallbackQuery):
+    """Обработчик аналитики"""
+    await callback.answer()
+    await cmd_analytics(callback.message)
+
+@router.callback_query(F.data == "reports_profit")
+async def reports_profit_button(callback: CallbackQuery):
+    """Обработчик прибыли"""
+    await callback.answer()
+    await cmd_profit(callback.message)
+
 @router.message(Command("low"))
 async def cmd_low(message: Message):
     """Обработчик команды /low"""
